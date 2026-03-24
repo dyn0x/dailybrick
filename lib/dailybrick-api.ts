@@ -533,6 +533,17 @@ export async function deleteTask(taskId: string) {
 
 export async function createTeam(owner: User): Promise<{ teamId: string; code: string }> {
   assertSupabaseConfigured()
+
+  const { data: existingMembership } = await supabase
+    .from("team_members")
+    .select("id")
+    .eq("user_id", owner.id)
+    .maybeSingle()
+
+  if (existingMembership) {
+    throw new Error("You are already in a team.")
+  }
+
   const code = await generateUniqueTeamCode()
 
   const { data: team, error: teamError } = await supabase
@@ -556,6 +567,63 @@ export async function createTeam(owner: User): Promise<{ teamId: string; code: s
   if (memberError) throw memberError
 
   return { teamId: team.id, code: team.code }
+}
+
+export async function joinTeamByCode(params: { user: User; code: string }) {
+  assertSupabaseConfigured()
+
+  const code = params.code.trim()
+  if (!code) throw new Error("Team code is required")
+
+  const { data, error } = await supabase.rpc("join_team_by_code", { p_code: code })
+  if (error) throw error
+
+  return data as string
+}
+
+export async function leaveTeam(params: { userId: string }) {
+  assertSupabaseConfigured()
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("team_members")
+    .select("id,team_id,role")
+    .eq("user_id", params.userId)
+    .maybeSingle<{ id: string; team_id: string; role: "owner" | "member" }>()
+
+  if (membershipError) throw membershipError
+  if (!membership) return
+
+  if (membership.role === "owner") {
+    throw new Error("Team owner cannot leave directly. Delete the team instead.")
+  }
+
+  const { error: clearTasksError } = await supabase
+    .from("tasks")
+    .update({ team_id: null })
+    .eq("user_id", params.userId)
+    .eq("team_id", membership.team_id)
+
+  if (clearTasksError) throw clearTasksError
+
+  const { error: leaveError } = await supabase
+    .from("team_members")
+    .delete()
+    .eq("id", membership.id)
+    .eq("user_id", params.userId)
+
+  if (leaveError) throw leaveError
+}
+
+export async function deleteTeam(params: { teamId: string; ownerId: string }) {
+  assertSupabaseConfigured()
+
+  const { error } = await supabase
+    .from("teams")
+    .delete()
+    .eq("id", params.teamId)
+    .eq("owner_id", params.ownerId)
+
+  if (error) throw error
 }
 
 export async function inviteTeamMember(params: { teamId: string; email: string }) {

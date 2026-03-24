@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Copy, Check, UserPlus, Users, Mail, Lock } from "lucide-react"
-import { createTeam, inviteTeamMember } from "@/lib/dailybrick-api"
+import { Copy, Check, UserPlus, Users, Mail, Lock, LogOut, Trash2, Link } from "lucide-react"
+import { createTeam, deleteTeam, inviteTeamMember, joinTeamByCode, leaveTeam } from "@/lib/dailybrick-api"
 import type { Task, TeamMember } from "@/lib/types"
 import type { User } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
@@ -38,17 +38,21 @@ interface TeamPageProps {
   user: User
   teamId: string | null
   teamCode: string | null
+  teamOwnerId: string | null
   teamMembers: TeamMember[]
   refreshAll: () => Promise<void>
   showNotification: (msg: string) => void
 }
 
-export function TeamPage({ user, teamId, teamCode, teamMembers, refreshAll, showNotification }: TeamPageProps) {
+export function TeamPage({ user, teamId, teamCode, teamOwnerId, teamMembers, refreshAll, showNotification }: TeamPageProps) {
   const [copied, setCopied] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
+  const [joinCode, setJoinCode] = useState("")
   const [inviteSent, setInviteSent] = useState(false)
   const [expandedMember, setExpandedMember] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const isOwner = teamOwnerId === user.id
 
   const copyCode = () => {
     if (!teamCode) return
@@ -97,23 +101,133 @@ export function TeamPage({ user, teamId, teamCode, teamMembers, refreshAll, show
     }
   }
 
+  const handleJoinByCode = async () => {
+    if (!joinCode.trim()) return
+    if (teamId) {
+      showNotification("You are already in a team.")
+      return
+    }
+
+    try {
+      setBusy(true)
+      await joinTeamByCode({ user, code: joinCode })
+      setJoinCode("")
+      await refreshAll()
+      showNotification("Joined team successfully.")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not join team"
+      showNotification(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleLeaveTeam = async () => {
+    if (!teamId) return
+    try {
+      setBusy(true)
+      await leaveTeam({ userId: user.id })
+      await refreshAll()
+      showNotification("You left the team.")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not leave team"
+      showNotification(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDeleteTeam = async () => {
+    if (!teamId) return
+    try {
+      setBusy(true)
+      await deleteTeam({ teamId, ownerId: user.id })
+      await refreshAll()
+      showNotification("Team deleted.")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not delete team"
+      showNotification(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {!teamId && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-card border border-border rounded-2xl p-5 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Create your team</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                DailyBrick supports 2 members per team. Create your team to invite one member.
+              </p>
+            </div>
+            <Button
+              onClick={() => void handleCreateTeam()}
+              disabled={busy}
+              className="h-10 px-4 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {busy ? "Creating..." : "Create Team"}
+            </Button>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Link className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Join by Team Code</h3>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter 10-char code"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void handleJoinByCode()}
+                className="h-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground rounded-xl text-sm"
+              />
+              <Button
+                onClick={() => void handleJoinByCode()}
+                disabled={busy}
+                className="h-10 px-4 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Join
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Use the code shared by the team owner.</p>
+          </div>
+        </div>
+      )}
+
+      {teamId && (
         <div className="bg-card border border-border rounded-2xl p-5 flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Create your team</h3>
+            <h3 className="text-sm font-semibold text-foreground">Team Actions</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              DailyBrick supports 2 members per team. Create your team to invite one member.
+              {isOwner ? "As owner, you can delete the whole team." : "You can leave this team anytime."}
             </p>
           </div>
-          <Button
-            onClick={() => void handleCreateTeam()}
-            disabled={busy}
-            className="h-10 px-4 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            {busy ? "Creating..." : "Create Team"}
-          </Button>
+          {!isOwner && (
+            <Button
+              onClick={() => void handleLeaveTeam()}
+              disabled={busy}
+              variant="outline"
+              className="h-10 px-4 rounded-xl border-border"
+            >
+              <LogOut className="w-4 h-4 mr-1" />
+              Leave Team
+            </Button>
+          )}
+          {isOwner && (
+            <Button
+              onClick={() => void handleDeleteTeam()}
+              disabled={busy}
+              variant="outline"
+              className="h-10 px-4 rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="w-4 h-4 mr-1" />
+              Delete Team
+            </Button>
+          )}
         </div>
       )}
 

@@ -36,6 +36,7 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
   const [teamCode, setTeamCode] = useState<string | null>(null)
+  const [teamOwnerId, setTeamOwnerId] = useState<string | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [carriedTasks, setCarriedTasks] = useState<Task[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -65,6 +66,7 @@ export default function Home() {
       setProfile(snapshot.profile)
       setTeamId(snapshot.teamId)
       setTeamCode(snapshot.teamCode)
+      setTeamOwnerId(snapshot.teamOwnerId)
       setTasks(snapshot.tasks)
       setCarriedTasks(snapshot.carriedTasks)
       setTeamMembers(snapshot.teamMembers)
@@ -94,6 +96,7 @@ export default function Home() {
       setProfile(null)
       setTeamId(null)
       setTeamCode(null)
+      setTeamOwnerId(null)
       setTasks([])
       setCarriedTasks([])
       setTeamMembers([])
@@ -228,6 +231,7 @@ export default function Home() {
               user={user}
               teamId={teamId}
               teamCode={teamCode}
+              teamOwnerId={teamOwnerId}
               teamMembers={teamMembers}
               refreshAll={refreshAll}
               showNotification={showNotification}

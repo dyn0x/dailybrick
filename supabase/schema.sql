@@ -185,6 +185,81 @@ on public.team_members
 for delete
 using (public.is_team_owner(team_id));
 
+create policy "team_members_delete_self_member"
+on public.team_members
+for delete
+using (user_id = auth.uid() and role = 'member');
+
+create or replace function public.join_team_by_code(p_code text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_team_id uuid;
+  v_user_id uuid := auth.uid();
+  v_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  v_member_count int;
+  v_email_slot_exists boolean;
+begin
+  if v_user_id is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if v_email = '' then
+    raise exception 'Authenticated user email is required';
+  end if;
+
+  select t.id
+  into v_team_id
+  from public.teams t
+  where t.code = p_code
+  limit 1;
+
+  if v_team_id is null then
+    raise exception 'Team not found';
+  end if;
+
+  if exists (
+    select 1 from public.team_members tm where tm.user_id = v_user_id
+  ) then
+    raise exception 'You are already in a team';
+  end if;
+
+  select count(*)
+  into v_member_count
+  from public.team_members tm
+  where tm.team_id = v_team_id;
+
+  if v_member_count >= 2 then
+    raise exception 'Team is full';
+  end if;
+
+  select exists (
+    select 1
+    from public.team_members tm
+    where tm.team_id = v_team_id
+      and lower(tm.invited_email) = v_email
+  )
+  into v_email_slot_exists;
+
+  if v_email_slot_exists then
+    update public.team_members
+    set user_id = v_user_id
+    where team_id = v_team_id
+      and lower(invited_email) = v_email;
+  else
+    insert into public.team_members (team_id, user_id, invited_email, role)
+    values (v_team_id, v_user_id, v_email, 'member');
+  end if;
+
+  return v_team_id;
+end;
+$$;
+
+grant execute on function public.join_team_by_code(text) to authenticated;
+
 create policy "tasks_select_team_member"
 on public.tasks
 for select

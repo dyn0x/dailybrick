@@ -77,7 +77,7 @@ function ThemeToggle() {
   )
 }
 
-({ activePage, onNavigate, onLogout }: NavbarProps) {
+export function Sidebar({ activePage, onNavigate, onLogout }: NavbarProps) {
   return (
     <aside className="w-56 h-screen bg-sidebar border-r border-sidebar-border flex flex-col shrink-0 overflow-hidden">
       {/* Logo */}

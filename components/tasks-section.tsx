@@ -1,5 +1,5 @@
 "use client"
-// Tasks section component
+
 import { useState, useRef, useEffect } from "react"
 import { Check, Trash2, Clock, ArrowUpFromLine, Plus, CalendarClock, ChevronDown, Tag } from "lucide-react"
 import { createPortal } from "react-dom"
@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 const PREDEFINED_TOPICS = [
-  "Work",
-  "Personal",
-  "Health",
-  "Learning",
-  "Finance",
-  "Home",
+  "DSA",
+  "Math",
+  "Machine Learning",
+  "Python",
+  "Py Libraries",
+  "Hackathon",
+  "Projects",
+  "Tool",
 ]
 
 interface TaskRowProps {
@@ -128,10 +130,11 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
   const openDropdown = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
+      const dropdownHeight = PREDEFINED_TOPICS.length * 36 + 44 + (newTopic ? 40 : 0)
       setDropdownPos({
-        top: rect.bottom + window.scrollY + 4,
+        top: rect.top + window.scrollY - dropdownHeight - 4,
         left: rect.left + window.scrollX,
-        width: 160,
+        width: 180,
       })
     }
     setShowTopicDropdown((prev) => !prev)
@@ -192,7 +195,6 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Carried forward */}
       {carriedTasks.length > 0 && (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border bg-chart-5/5">
@@ -208,7 +210,6 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
         </div>
       )}
 
-      {/* Today's tasks */}
       <div className="bg-card border border-border rounded-2xl overflow-visible">
         <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border rounded-t-2xl">
           <CalendarClock className="w-4 h-4 text-primary" />
@@ -232,11 +233,8 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
           )}
         </div>
 
-        {/* Add task — single row: 60% title | 15% topic | 15% time | 10% button */}
         <div className="px-4 pb-4 pt-3 border-t border-border">
           <div className="flex gap-2 items-center">
-
-            {/* Title — 60% */}
             <div className="flex-[6]">
               <Input
                 placeholder="Add a new task..."
@@ -247,7 +245,6 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
               />
             </div>
 
-            {/* Topic — 15% */}
             <div className="flex-[1.5]">
               {showCustomInput ? (
                 <div className="flex gap-1">
@@ -282,7 +279,6 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
               )}
             </div>
 
-            {/* Time — 15% */}
             <div className="flex-[1.5]">
               <input
                 type="time"
@@ -292,7 +288,6 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
               />
             </div>
 
-            {/* Add button — 10% */}
             <div className="flex-1">
               <Button
                 onClick={addTask}
@@ -306,7 +301,6 @@ export function TasksSection({ tasks, setTasks, showNotification }: TasksSection
         </div>
       </div>
 
-      {/* Topic dropdown portal — renders above all overflow containers */}
       {showTopicDropdown && typeof window !== "undefined" && createPortal(
         <div
           ref={dropdownRef}

@@ -18,6 +18,7 @@ interface NavbarProps {
 const navItems: { id: Page; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "team", label: "Team", icon: Users },
+  { id: "progress", label: "Progress", icon: BarChart2 },
   { id: "settings", label: "Settings", icon: Settings },
 ]
 

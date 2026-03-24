@@ -20,7 +20,7 @@ const navItems: { id: Page; label: string; icon: React.ElementType }[] = [
 
 export function Sidebar({ activePage, onNavigate, onLogout }: NavbarProps) {
   return (
-    <aside className="w-56 min-h-screen bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
+    <aside className="w-56 h-screen bg-sidebar border-r border-sidebar-border flex flex-col shrink-0 overflow-hidden">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-sidebar-border">
         <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">

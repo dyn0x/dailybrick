@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react"
 import type { User } from "@supabase/supabase-js"
-import { AppShell } from "@/components/app-shell"
-import { LandingPage } from "@/components/landing-page"
+import { useRouter } from "next/navigation"
+import { AuthPage } from "@/components/auth-page"
 import { Spinner } from "@/components/ui/spinner"
 import { getCurrentUser, onAuthStateChange } from "@/lib/dailybrick-api"
 
-export default function Home() {
+export default function AuthRoutePage() {
+  const router = useRouter()
   const [isBooting, setIsBooting] = useState(true)
   const [user, setUser] = useState<User | null>(null)
 
@@ -27,7 +28,7 @@ export default function Home() {
 
     void bootstrap()
 
-    const { data } = onAuthStateChange((_event, session) => {
+    const { data } = onAuthStateChange(async (_event, session) => {
       if (!isMounted) return
       setUser(session?.user ?? null)
     })
@@ -38,7 +39,13 @@ export default function Home() {
     }
   }, [])
 
-  if (isBooting) {
+  useEffect(() => {
+    if (!isBooting && user) {
+      router.replace("/")
+    }
+  }, [isBooting, router, user])
+
+  if (isBooting || user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Spinner />
@@ -46,9 +53,15 @@ export default function Home() {
     )
   }
 
-  if (!user) {
-    return <LandingPage />
-  }
-
-  return <AppShell />
+  return (
+    <AuthPage
+      onLogin={() => {
+        void getCurrentUser().then((current) => {
+          if (current) {
+            router.replace("/")
+          }
+        })
+      }}
+    />
+  )
 }

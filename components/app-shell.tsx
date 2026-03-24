@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
-import { AuthPage } from "@/components/auth-page"
 import { Sidebar, Topbar, BottomNav } from "@/components/layout"
 import { DashboardPage } from "@/components/dashboard-page"
 import { TeamPage } from "@/components/team-page"
@@ -11,6 +10,7 @@ import { ProgressPage } from "@/components/progress-page"
 import { SettingsPage } from "@/components/settings-page"
 import { ToastContainer, useToasts } from "@/components/toast-notifications"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import {
   getCurrentUser,
   getDueReminderTasks,
@@ -20,6 +20,7 @@ import {
   signOut,
 } from "@/lib/dailybrick-api"
 import type { DashboardQuickStats, Task, TeamMember, TopicProgress, UserProfile } from "@/lib/types"
+import type { AppSnapshot } from "@/lib/types"
 
 type Page = "dashboard" | "team" | "settings" | "progress"
 
@@ -43,6 +44,8 @@ function pathToPage(pathname: string): Page {
   if (pathname.startsWith("/progress")) return "progress"
   return "dashboard"
 }
+
+let appSnapshotCache: { userId: string; snapshot: AppSnapshot } | null = null
 
 function DashboardSkeleton() {
   return (
@@ -163,20 +166,27 @@ export function AppShell() {
 
   const userEmail = profile?.email ?? user?.email ?? ""
 
-  const refreshAll = useCallback(async () => {
+  const applySnapshot = useCallback((snapshot: AppSnapshot) => {
+    setProfile(snapshot.profile)
+    setTeamId(snapshot.teamId)
+    setTeamCode(snapshot.teamCode)
+    setTeamOwnerId(snapshot.teamOwnerId)
+    setTasks(snapshot.tasks)
+    setCarriedTasks(snapshot.carriedTasks)
+    setTeamMembers(snapshot.teamMembers)
+    setTopics(snapshot.topics)
+    setQuickStats(snapshot.quickStats)
+  }, [])
+
+  const refreshAll = useCallback(async (options?: { silent?: boolean }) => {
     if (!user) return
     try {
-      setIsLoadingData(true)
+      if (!options?.silent) {
+        setIsLoadingData(true)
+      }
       const snapshot = await loadAppSnapshot(user)
-      setProfile(snapshot.profile)
-      setTeamId(snapshot.teamId)
-      setTeamCode(snapshot.teamCode)
-      setTeamOwnerId(snapshot.teamOwnerId)
-      setTasks(snapshot.tasks)
-      setCarriedTasks(snapshot.carriedTasks)
-      setTeamMembers(snapshot.teamMembers)
-      setTopics(snapshot.topics)
-      setQuickStats(snapshot.quickStats)
+      applySnapshot(snapshot)
+      appSnapshotCache = { userId: user.id, snapshot }
       lastLoadErrorRef.current = null
     } catch (err) {
       const originalMessage = err instanceof Error ? err.message : "Could not load app data"
@@ -190,9 +200,11 @@ export function AppShell() {
         lastLoadErrorRef.current = mappedMessage
       }
     } finally {
-      setIsLoadingData(false)
+      if (!options?.silent) {
+        setIsLoadingData(false)
+      }
     }
-  }, [showNotification, user])
+  }, [applySnapshot, showNotification, user])
 
   const handleLogout = useCallback(async () => {
     try {
@@ -206,6 +218,7 @@ export function AppShell() {
       setCarriedTasks([])
       setTeamMembers([])
       setTopics([])
+      appSnapshotCache = null
       router.push("/")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not sign out"
@@ -262,8 +275,17 @@ export function AppShell() {
 
   useEffect(() => {
     if (!user) return
+
+    const cached = appSnapshotCache
+    if (cached && cached.userId === user.id) {
+      applySnapshot(cached.snapshot)
+      setIsLoadingData(false)
+      void refreshAll({ silent: true })
+      return
+    }
+
     void refreshAll()
-  }, [refreshAll, user])
+  }, [applySnapshot, refreshAll, user])
 
   useEffect(() => {
     if (!user) return
@@ -289,26 +311,25 @@ export function AppShell() {
     return () => window.clearInterval(interval)
   }, [showNotification, user])
 
+  useEffect(() => {
+    if (!isBooting && !user) {
+      router.replace("/auth")
+    }
+  }, [isBooting, router, user])
+
   if (isBooting) {
-    return <div className="min-h-screen bg-background" />
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Spinner />
+      </div>
+    )
   }
 
   if (!user) {
     return (
-      <AuthPage
-        onLogin={() => {
-          void getCurrentUser()
-            .then((u) => {
-              setUser(u)
-              if (!u) {
-                showNotification("Check your email for confirmation, then sign in.")
-              }
-            })
-            .catch(() => {
-              setUser(null)
-            })
-        }}
-      />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Spinner />
+      </div>
     )
   }
 

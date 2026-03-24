@@ -204,6 +204,31 @@
     animation: page-fade-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
     will-change: opacity, transform, filter;
   }
+
+  .loader {
+    border: 2px solid var(--primary-foreground);
+    width: 48px;
+    height: 48px;
+    background: var(--primary);
+    border-radius: 50%;
+    display: inline-block;
+    position: relative;
+    box-sizing: border-box;
+    animation: rotation 2s linear infinite;
+    box-shadow: 0 10px 20px color-mix(in oklab, var(--primary), black 78%);
+  }
+
+  .loader::after {
+    content: '';
+    box-sizing: border-box;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border: 24px solid;
+    border-color: transparent var(--primary-foreground);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
 }
 
 @keyframes page-fade-slide {
@@ -233,6 +258,15 @@
   }
 }
 
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .page-transition-in {
     animation: none;
@@ -240,6 +274,10 @@
 
   [data-slot='skeleton'] {
     animation: none !important;
+  }
+
+  .loader {
+    animation: none;
   }
 }
 

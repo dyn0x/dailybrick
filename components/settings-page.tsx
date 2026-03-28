@@ -5,7 +5,7 @@ import { Settings, Bell, Moon, Globe, LifeBuoy, MessageSquareWarning, Sparkles }
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { clearAllUserTasks, requestPasswordReset, updateProfileName } from "@/lib/dailybrick-api"
+import { clearAllUserTasks, signInWithGoogle, updateProfileName } from "@/lib/dailybrick-api"
 
 interface SettingsPageProps {
   userId: string
@@ -44,17 +44,6 @@ export function SettingsPage({ userId, userName, userEmail, refreshAll, showNoti
     }
   }
 
-  const handleResetPassword = async () => {
-    try {
-      const redirectTo = `${window.location.origin}/`
-      await requestPasswordReset(userEmail, redirectTo)
-      showNotification("Password reset email sent")
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not send password reset email"
-      showNotification(message)
-    }
-  }
-
   const handleClearTasks = async () => {
     try {
       setIsClearingTasks(true)
@@ -66,6 +55,15 @@ export function SettingsPage({ userId, userName, userEmail, refreshAll, showNoti
       showNotification(message)
     } finally {
       setIsClearingTasks(false)
+    }
+  }
+
+  const handleConnectGoogleCalendar = async () => {
+    try {
+      await signInWithGoogle(window.location.origin)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not connect Google Calendar"
+      showNotification(message)
     }
   }
 
@@ -169,6 +167,16 @@ export function SettingsPage({ userId, userName, userEmail, refreshAll, showNoti
                 {control}
               </div>
             ))}
+
+            <div className="rounded-xl border border-border bg-secondary/40 p-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Google Calendar</p>
+                <p className="text-xs text-muted-foreground">Connect Google so pending tasks sync as calendar reminders.</p>
+              </div>
+              <Button variant="outline" className="h-8 px-3 rounded-lg text-xs" onClick={() => void handleConnectGoogleCalendar()}>
+                Connect
+              </Button>
+            </div>
           </div>
 
           <div className="bg-card border border-destructive/20 rounded-2xl p-5 flex flex-col gap-3">
@@ -186,11 +194,11 @@ export function SettingsPage({ userId, userName, userEmail, refreshAll, showNoti
                 {isClearingTasks ? "Clearing..." : "Clear all tasks"}
               </Button>
               <Button
-                onClick={() => void handleResetPassword()}
+                onClick={() => void handleConnectGoogleCalendar()}
                 variant="outline"
-                className="h-9 px-4 rounded-xl text-xs border-destructive/40 text-destructive hover:bg-destructive/10"
+                className="h-9 px-4 rounded-xl text-xs border-border text-foreground hover:bg-secondary"
               >
-                Reset password
+                Reconnect Google
               </Button>
             </div>
           </div>

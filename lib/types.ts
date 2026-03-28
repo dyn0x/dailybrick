@@ -9,6 +9,7 @@ export interface Task {
   taskScope?: TaskScope
   sharedTaskKey?: string
   teamId?: string | null
+  calendarEventId?: string
   carriedForward?: boolean
   topic?: string
   dueDate?: string

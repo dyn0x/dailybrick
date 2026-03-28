@@ -7,6 +7,7 @@ interface DbTask {
   user_id: string
   task_scope: TaskScope
   shared_task_key: string | null
+  calendar_event_id: string | null
   title: string
   topic: string | null
   due_date: string
@@ -42,6 +43,9 @@ interface DbTopicProgress {
   total_count: number
   completed_count: number
 }
+
+const DB_TASK_SELECT =
+  "id,user_id,task_scope,shared_task_key,calendar_event_id,title,topic,due_date,reminder_time,status,carried_forward,team_id"
 
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -114,6 +118,7 @@ function mapTask(task: DbTask): Task {
     ownerId: task.user_id,
     taskScope: task.task_scope,
     sharedTaskKey: task.shared_task_key ?? undefined,
+    calendarEventId: task.calendar_event_id ?? undefined,
     teamId: task.team_id,
     title: task.title,
     topic: task.topic ?? undefined,
@@ -121,6 +126,106 @@ function mapTask(task: DbTask): Task {
     time: time24To12Label(task.reminder_time),
     status: task.status,
     carriedForward: task.carried_forward,
+  }
+}
+
+function toRfc3339DateTime(dueDate: string, reminderTime: string | null): string {
+  const fallback = "09:00:00"
+  const clock = reminderTime ?? fallback
+  return `${dueDate}T${clock}`
+}
+
+async function getGoogleProviderToken(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw error
+  return data.session?.provider_token ?? null
+}
+
+async function syncTaskWithGoogleCalendar(task: DbTask) {
+  const token = await getGoogleProviderToken()
+  if (!token) return
+
+  if (task.status === "completed") {
+    if (!task.calendar_event_id) return
+
+    await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(task.calendar_event_id)}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+
+    await supabase.from("tasks").update({ calendar_event_id: null }).eq("id", task.id)
+    return
+  }
+
+  const startDateTime = toRfc3339DateTime(task.due_date, task.reminder_time)
+  const endDate = new Date(startDateTime)
+  endDate.setMinutes(endDate.getMinutes() + 30)
+
+  const payload = {
+    summary: task.title,
+    description: `DailyBrick task${task.topic ? ` | Topic: ${task.topic}` : ""}${
+      task.task_scope === "team" ? " | Team task" : ""
+    }`,
+    start: { dateTime: startDateTime },
+    end: { dateTime: endDate.toISOString() },
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: 0 },
+        { method: "email", minutes: 10 },
+      ],
+    },
+  }
+
+  if (task.calendar_event_id) {
+    await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(task.calendar_event_id)}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    )
+    return
+  }
+
+  const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) return
+  const created = (await response.json()) as { id?: string }
+  if (!created.id) return
+
+  await supabase.from("tasks").update({ calendar_event_id: created.id }).eq("id", task.id)
+}
+
+async function syncMyTaskRowsWithGoogleCalendar(rows: DbTask[]) {
+  if (rows.length === 0) return
+  for (const row of rows) {
+    try {
+      if (row.status === "completed" && row.calendar_event_id) {
+        await syncTaskWithGoogleCalendar(row)
+      }
+      if (row.status === "pending") {
+        await syncTaskWithGoogleCalendar(row)
+      }
+    } catch {
+      // Calendar sync is best-effort and must not break task operations.
+    }
   }
 }
 
@@ -288,7 +393,7 @@ async function getTodayTasksForUsers(userIds: string[]): Promise<DbTask[]> {
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select(DB_TASK_SELECT)
     .in("user_id", userIds)
     .eq("due_date", today)
     .order("reminder_time", { ascending: true })
@@ -382,6 +487,24 @@ export async function signUpWithEmail(email: string, password: string, fullName:
 export async function signInWithEmail(email: string, password: string) {
   assertSupabaseConfigured()
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) throw error
+  return data
+}
+
+export async function signInWithGoogle(redirectTo: string) {
+  assertSupabaseConfigured()
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo,
+      scopes: "https://www.googleapis.com/auth/calendar.events",
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent",
+      },
+    },
+  })
+
   if (error) throw error
   return data
 }
@@ -504,6 +627,7 @@ export async function loadAppSnapshot(user: User): Promise<AppSnapshot> {
   }
 
   const myTasksRaw = tasksByUser.get(user.id) ?? []
+  await syncMyTaskRowsWithGoogleCalendar(myTasksRaw)
   const tasks = myTasksRaw.filter((task) => !task.carried_forward).map(mapTask)
   const carriedTasks = myTasksRaw.filter((task) => task.carried_forward).map(mapTask)
 
@@ -601,7 +725,7 @@ export async function createTask(params: {
     const { data, error } = await supabase
       .from("tasks")
       .insert(payload)
-      .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+      .select(DB_TASK_SELECT)
       .returns<DbTask[]>()
 
     if (error) throw error
@@ -609,6 +733,15 @@ export async function createTask(params: {
     for (const row of data ?? []) {
       if (!row.topic) continue
       await adjustTopicProgress({ userId: row.user_id, topic: row.topic, totalDelta: 1 })
+    }
+
+    const myTaskRow = (data ?? []).find((row) => row.user_id === params.userId)
+    if (myTaskRow) {
+      try {
+        await syncTaskWithGoogleCalendar(myTaskRow)
+      } catch {
+        // Calendar sync is best-effort and must not block task creation.
+      }
     }
 
     const ownTask = (data ?? []).find((task) => task.user_id === params.userId) ?? data?.[0]
@@ -633,14 +766,21 @@ export async function createTask(params: {
       status: "pending",
       carried_forward: false,
       reminder_sent_at: null,
+      calendar_event_id: null,
     })
-    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select(DB_TASK_SELECT)
     .single<DbTask>()
 
   if (error) throw error
 
   if (data.topic) {
     await adjustTopicProgress({ userId: data.user_id, topic: data.topic, totalDelta: 1 })
+  }
+
+  try {
+    await syncTaskWithGoogleCalendar(data)
+  } catch {
+    // Calendar sync is best-effort and must not block task creation.
   }
 
   return mapTask(data)
@@ -652,7 +792,7 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
 
   const sourceRowsQuery = supabase
     .from("tasks")
-    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select(DB_TASK_SELECT)
 
   if (task.taskScope === "team" && task.sharedTaskKey) {
     sourceRowsQuery.eq("shared_task_key", task.sharedTaskKey)
@@ -677,7 +817,7 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
   }
 
   const { data, error } = await query
-    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select(DB_TASK_SELECT)
     .returns<DbTask[]>()
 
   if (error) throw error
@@ -691,6 +831,15 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
     })
   }
 
+  const myUpdatedRow = (data ?? []).find((row) => row.id === task.id)
+  if (myUpdatedRow) {
+    try {
+      await syncTaskWithGoogleCalendar(myUpdatedRow)
+    } catch {
+      // Calendar sync is best-effort and must not block task updates.
+    }
+  }
+
   const updatedTask = (data ?? []).find((row) => row.id === task.id) ?? data?.[0]
   if (!updatedTask) throw new Error("Could not update task")
   return mapTask(updatedTask)
@@ -700,7 +849,7 @@ export async function deleteTask(task: Pick<Task, "id" | "taskScope" | "sharedTa
   assertSupabaseConfigured()
   const sourceRowsQuery = supabase
     .from("tasks")
-    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select(DB_TASK_SELECT)
 
   if (task.taskScope === "team" && task.sharedTaskKey) {
     sourceRowsQuery.eq("shared_task_key", task.sharedTaskKey)
@@ -710,6 +859,15 @@ export async function deleteTask(task: Pick<Task, "id" | "taskScope" | "sharedTa
 
   const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
   if (sourceError) throw sourceError
+
+  const mySourceRow = (sourceRows ?? []).find((row) => row.id === task.id)
+  if (mySourceRow?.calendar_event_id) {
+    try {
+      await syncTaskWithGoogleCalendar({ ...mySourceRow, status: "completed" })
+    } catch {
+      // Calendar sync is best-effort and must not block task deletion.
+    }
+  }
 
   const query = supabase.from("tasks").delete()
 
@@ -909,7 +1067,7 @@ export async function getDueReminderTasks(userId: string): Promise<Task[]> {
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select(DB_TASK_SELECT)
     .eq("user_id", userId)
     .eq("due_date", today)
     .eq("status", "pending")

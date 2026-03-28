@@ -155,10 +155,9 @@ export function AppShell() {
     topTopic: "No topic yet",
     teamMembers: "0/2",
   })
-  const { toasts, showNotification, dismissToast } = useToasts()
+  const { toasts, notificationFeed, showNotification, dismissToast, clearNotificationFeed } = useToasts()
   const lastLoadErrorRef = useRef<string | null>(null)
   const browserNotificationPermissionAskedRef = useRef(false)
-  const reminderModeNoticeShownRef = useRef(false)
 
   const userDisplayName = useMemo(() => {
     if (profile?.fullName) return profile.fullName
@@ -235,19 +234,6 @@ export function AppShell() {
     [router]
   )
 
-  const handleNotificationClick = useCallback(() => {
-    const pendingToday = tasks.filter((t) => t.status === "pending").length
-    const pendingCarried = carriedTasks.filter((t) => t.status === "pending").length
-    const totalPending = pendingToday + pendingCarried
-
-    if (totalPending === 0) {
-      showNotification("No pending tasks right now. Great job!")
-      return
-    }
-
-    showNotification(`You have ${totalPending} pending task${totalPending > 1 ? "s" : ""}.`)
-  }, [carriedTasks, showNotification, tasks])
-
   useEffect(() => {
     let isMounted = true
 
@@ -290,14 +276,19 @@ export function AppShell() {
   }, [applySnapshot, refreshAll, user])
 
   useEffect(() => {
-    if (!user || reminderModeNoticeShownRef.current) return
+    if (!user) return
+
+    if (typeof window === "undefined") return
+
+    const noticeKey = `dailybrick-reminder-mode-notice:${user.id}`
+    if (window.sessionStorage.getItem(noticeKey) === "1") return
 
     const provider = user.app_metadata?.provider
     if (provider !== "google") {
       showNotification("Email account detected: reminders will use in-app and browser notifications.")
     }
 
-    reminderModeNoticeShownRef.current = true
+    window.sessionStorage.setItem(noticeKey, "1")
   }, [showNotification, user])
 
   useEffect(() => {
@@ -380,9 +371,10 @@ export function AppShell() {
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar
           title={pageTitles[activePage]}
-          onNotificationClick={handleNotificationClick}
           onProfileClick={() => handleNavigate("settings")}
           userName={userDisplayName}
+          notifications={notificationFeed}
+          onClearNotifications={clearNotificationFeed}
         />
 
         <main className="flex-1 px-4 py-4 md:p-6 overflow-y-auto pb-20 md:pb-6">

@@ -65,15 +65,29 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
 
 export function useToasts() {
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  const [notificationFeed, setNotificationFeed] = useState<ToastMessage[]>([])
 
   const showNotification = useCallback((message: string) => {
-    const id = `toast-${Date.now()}`
-    setToasts((prev) => [...prev, { id, message, timestamp: new Date() }])
+    const notification = {
+      id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      message,
+      timestamp: new Date(),
+    }
+
+    setToasts((prev) => [...prev, notification])
+    setNotificationFeed((prev) => {
+      const next = [...prev, notification]
+      return next.length > 50 ? next.slice(next.length - 50) : next
+    })
   }, [])
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
-  return { toasts, showNotification, dismissToast }
+  const clearNotificationFeed = useCallback(() => {
+    setNotificationFeed([])
+  }, [])
+
+  return { toasts, notificationFeed, showNotification, dismissToast, clearNotificationFeed }
 }

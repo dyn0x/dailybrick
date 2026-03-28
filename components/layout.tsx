@@ -4,6 +4,7 @@ import { Box, LayoutDashboard, Users, Settings, ChevronDown, Bell, LogOut, Sun, 
 import { useState, useRef, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
+import type { ToastMessage } from "@/components/toast-notifications"
 
 type Page = "dashboard" | "team" | "settings" | "progress"
 
@@ -142,12 +143,29 @@ export function Sidebar({ activePage, onNavigate, onProfileClick, onLogout, user
 
 interface TopbarProps {
   title: string
-  onNotificationClick: () => void
   onProfileClick: () => void
   userName: string
+  notifications: ToastMessage[]
+  onClearNotifications: () => void
 }
 
-export function Topbar({ title, onNotificationClick, onProfileClick, userName }: TopbarProps) {
+export function Topbar({ title, onProfileClick, userName, notifications, onClearNotifications }: TopbarProps) {
+  const [openNotifications, setOpenNotifications] = useState(false)
+  const notificationsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
+        setOpenNotifications(false)
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const sortedNotifications = [...notifications].reverse()
+
   return (
     <header className="h-14 md:h-16 border-b border-border bg-background/80 backdrop-blur-sm flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-10">
       <div className="flex items-center gap-2.5">
@@ -162,14 +180,56 @@ export function Topbar({ title, onNotificationClick, onProfileClick, userName }:
 
       <div className="flex items-center gap-2">
         <ThemeToggle />
-        <button
-          onClick={onNotificationClick}
-          className="relative w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
-        </button>
+        <div className="relative" ref={notificationsRef}>
+          <button
+            onClick={() => setOpenNotifications((prev) => !prev)}
+            className="relative w-8 h-8 rounded-xl bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            {notifications.length > 0 && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />}
+          </button>
+
+          {openNotifications && (
+            <div className="absolute right-0 top-full mt-2 w-[340px] max-w-[85vw] bg-popover border border-border rounded-2xl shadow-xl z-50 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-background/70">
+                <p className="text-sm font-semibold text-foreground">Notifications</p>
+                <button
+                  onClick={onClearNotifications}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto p-2 space-y-2">
+                {sortedNotifications.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-xs text-muted-foreground">No notifications yet</div>
+                ) : (
+                  sortedNotifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="rounded-xl border border-border bg-card px-3 py-2.5 flex items-start gap-2.5"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
+                        <Bell className="w-3.5 h-3.5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-foreground leading-relaxed break-words">{notification.message}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          {notification.timestamp.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <button
           onClick={onProfileClick}
           className="hidden md:flex w-8 h-8 rounded-full bg-primary/20 items-center justify-center text-xs font-semibold text-primary"

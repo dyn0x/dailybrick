@@ -30,6 +30,8 @@ create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   team_id uuid references public.teams(id) on delete set null,
+  task_scope text not null default 'individual' check (task_scope in ('individual', 'team')),
+  shared_task_key uuid,
   title text not null,
   topic text,
   due_date date not null default current_date,
@@ -40,6 +42,33 @@ create table if not exists public.tasks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.topic_progress (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  topic text not null,
+  total_count integer not null default 0,
+  completed_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, topic)
+);
+
+alter table public.tasks add column if not exists task_scope text not null default 'individual';
+alter table public.tasks add column if not exists shared_task_key uuid;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'tasks_task_scope_check'
+      and conrelid = 'public.tasks'::regclass
+  ) then
+    alter table public.tasks
+      add constraint tasks_task_scope_check check (task_scope in ('individual', 'team'));
+  end if;
+end $$;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -116,6 +145,7 @@ alter table public.profiles enable row level security;
 alter table public.teams enable row level security;
 alter table public.team_members enable row level security;
 alter table public.tasks enable row level security;
+alter table public.topic_progress enable row level security;
 
 create policy "profiles_select_own"
 on public.profiles
@@ -268,25 +298,70 @@ using (
   or (team_id is not null and public.is_team_member(team_id))
 );
 
-create policy "tasks_insert_own"
+drop policy if exists "tasks_insert_own" on public.tasks;
+
+create policy "tasks_insert_own_or_team_shared"
 on public.tasks
 for insert
 with check (
-  user_id = auth.uid()
-  and (
-    team_id is null
-    or public.is_team_member(team_id)
-    or public.is_team_owner(team_id)
+  (
+    user_id = auth.uid()
+    and task_scope = 'individual'
+    and (
+      team_id is null
+      or public.is_team_member(team_id)
+      or public.is_team_owner(team_id)
+    )
+  )
+  or (
+    task_scope = 'team'
+    and team_id is not null
+    and shared_task_key is not null
+    and public.is_team_member(team_id)
+    and exists (
+      select 1
+      from public.team_members tm
+      where tm.team_id = tasks.team_id
+        and tm.user_id = tasks.user_id
+    )
   )
 );
 
-create policy "tasks_update_own"
+drop policy if exists "tasks_update_own" on public.tasks;
+drop policy if exists "tasks_delete_own" on public.tasks;
+
+create policy "tasks_update_own_or_team_shared"
 on public.tasks
+for update
+using (
+  user_id = auth.uid()
+  or (task_scope = 'team' and team_id is not null and public.is_team_member(team_id))
+)
+with check (
+  user_id = auth.uid()
+  or (task_scope = 'team' and team_id is not null and public.is_team_member(team_id))
+);
+
+create policy "tasks_delete_own_or_team_shared"
+on public.tasks
+for delete
+using (
+  user_id = auth.uid()
+  or (task_scope = 'team' and team_id is not null and public.is_team_member(team_id))
+);
+
+create policy "topic_progress_select_own"
+on public.topic_progress
+for select
+using (user_id = auth.uid());
+
+create policy "topic_progress_insert_own"
+on public.topic_progress
+for insert
+with check (user_id = auth.uid());
+
+create policy "topic_progress_update_own"
+on public.topic_progress
 for update
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
-
-create policy "tasks_delete_own"
-on public.tasks
-for delete
-using (user_id = auth.uid());

@@ -28,6 +28,11 @@ function TaskRowReadOnly({ task }: { task: Task }) {
       >
         {task.title}
       </p>
+      {task.taskScope === "team" && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-chart-2/20 text-chart-2 font-semibold uppercase tracking-wide">
+          Team
+        </span>
+      )}
       <span className="text-[10px] text-muted-foreground shrink-0">{task.time}</span>
       <Lock className="w-3 h-3 text-muted-foreground/40 shrink-0" aria-label="View only" />
     </div>

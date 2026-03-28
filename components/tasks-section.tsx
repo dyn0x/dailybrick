@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Check, Trash2, Clock, ArrowUpFromLine, Plus, CalendarClock, ChevronDown, Tag } from "lucide-react"
 import { createPortal } from "react-dom"
 import { createTask, deleteTask, toggleTaskStatus } from "@/lib/dailybrick-api"
-import type { Task } from "@/lib/types"
+import type { Task, TaskScope } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -70,6 +70,11 @@ function TaskRow({ task, onToggle, onDelete, disabled }: TaskRowProps) {
               {task.topic}
             </span>
           )}
+          {task.taskScope === "team" && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-chart-2/20 text-chart-2 font-semibold uppercase tracking-wide">
+              Team
+            </span>
+          )}
         </div>
       </div>
 
@@ -122,6 +127,7 @@ export function TasksSection({
   const [newTime, setNewTime] = useState("09:00")
   const [newTopic, setNewTopic] = useState("")
   const [customTopic, setCustomTopic] = useState("")
+  const [taskScope, setTaskScope] = useState<TaskScope>("individual")
   const [showTopicDropdown, setShowTopicDropdown] = useState(false)
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -159,7 +165,7 @@ export function TasksSection({
   const toggleTask = async (task: Task, carried: boolean) => {
     try {
       setSaving(true)
-      const updated = await toggleTaskStatus(task.id, task.status)
+      const updated = await toggleTaskStatus(task)
       if (carried) {
         setCarriedTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
       } else {
@@ -177,11 +183,22 @@ export function TasksSection({
   const handleDeleteTask = async (id: string, carried: boolean) => {
     try {
       setSaving(true)
-      await deleteTask(id)
+      const target = (carried ? carriedTasks : tasks).find((t) => t.id === id)
+      if (!target) return
+
+      await deleteTask(target)
       if (carried) {
-        setCarriedTasks((prev) => prev.filter((t) => t.id !== id))
+        if (target.taskScope === "team" && target.sharedTaskKey) {
+          setCarriedTasks((prev) => prev.filter((t) => t.sharedTaskKey !== target.sharedTaskKey))
+        } else {
+          setCarriedTasks((prev) => prev.filter((t) => t.id !== id))
+        }
       } else {
-        setTasks((prev) => prev.filter((t) => t.id !== id))
+        if (target.taskScope === "team" && target.sharedTaskKey) {
+          setTasks((prev) => prev.filter((t) => t.sharedTaskKey !== target.sharedTaskKey))
+        } else {
+          setTasks((prev) => prev.filter((t) => t.id !== id))
+        }
       }
       await refreshAll()
     } catch (err) {
@@ -219,6 +236,7 @@ export function TasksSection({
       const task = await createTask({
         userId,
         teamId,
+        taskScope,
         title: newTitle.trim(),
         topic: newTopic || undefined,
         reminderTime: newTime,
@@ -229,6 +247,7 @@ export function TasksSection({
       setNewTitle("")
       setNewTime("09:00")
       setNewTopic("")
+      setTaskScope("individual")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create task"
       showNotification?.(message)
@@ -297,6 +316,36 @@ export function TasksSection({
 
         {/* Add task — title full-width on mobile, all inline on sm+ */}
         <div className="px-4 pb-4 pt-3 border-t border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => setTaskScope("individual")}
+              className={cn(
+                "h-8 px-3 rounded-lg text-xs font-medium border transition-colors",
+                taskScope === "individual"
+                  ? "bg-primary/15 text-primary border-primary/30"
+                  : "bg-secondary text-muted-foreground border-border hover:text-foreground"
+              )}
+            >
+              Individual task
+            </button>
+            <button
+              onClick={() => setTaskScope("team")}
+              disabled={!teamId}
+              className={cn(
+                "h-8 px-3 rounded-lg text-xs font-medium border transition-colors",
+                taskScope === "team"
+                  ? "bg-chart-2/20 text-chart-2 border-chart-2/40"
+                  : "bg-secondary text-muted-foreground border-border hover:text-foreground",
+                !teamId && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              Team task
+            </button>
+            {taskScope === "team" && (
+              <p className="text-[11px] text-muted-foreground">Shared completion and delete for all team members</p>
+            )}
+          </div>
+
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {/* Title */}
             <div className="w-full sm:flex-[6]">

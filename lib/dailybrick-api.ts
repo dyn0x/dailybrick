@@ -1,10 +1,12 @@
 import type { User } from "@supabase/supabase-js"
 import { isSupabaseConfigured, supabase } from "@/lib/supabase"
-import type { AppSnapshot, Task, TaskStatus, TeamMember, TopicProgress, UserProfile } from "@/lib/types"
+import type { AppSnapshot, Task, TaskScope, TaskStatus, TeamMember, TopicProgress, UserProfile } from "@/lib/types"
 
 interface DbTask {
   id: string
   user_id: string
+  task_scope: TaskScope
+  shared_task_key: string | null
   title: string
   topic: string | null
   due_date: string
@@ -32,6 +34,13 @@ interface DbProfile {
   user_id: string
   email: string
   full_name: string
+}
+
+interface DbTopicProgress {
+  user_id: string
+  topic: string
+  total_count: number
+  completed_count: number
 }
 
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
@@ -103,6 +112,9 @@ function mapTask(task: DbTask): Task {
   return {
     id: task.id,
     ownerId: task.user_id,
+    taskScope: task.task_scope,
+    sharedTaskKey: task.shared_task_key ?? undefined,
+    teamId: task.team_id,
     title: task.title,
     topic: task.topic ?? undefined,
     dueDate: task.due_date,
@@ -176,6 +188,55 @@ async function carryForwardPendingTasks(userId: string): Promise<void> {
     .lt("due_date", today)
 }
 
+async function cleanupOldCompletedTasks(userId: string): Promise<void> {
+  const today = getTodayLocalDateString()
+
+  await supabase
+    .from("tasks")
+    .delete()
+    .eq("user_id", userId)
+    .eq("status", "completed")
+    .lt("due_date", today)
+}
+
+async function adjustTopicProgress(params: {
+  userId: string
+  topic: string
+  totalDelta?: number
+  completedDelta?: number
+}) {
+  const topic = params.topic.trim()
+  if (!topic) return
+
+  const totalDelta = params.totalDelta ?? 0
+  const completedDelta = params.completedDelta ?? 0
+  if (totalDelta === 0 && completedDelta === 0) return
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("topic_progress")
+    .select("user_id,topic,total_count,completed_count")
+    .eq("user_id", params.userId)
+    .eq("topic", topic)
+    .maybeSingle<DbTopicProgress>()
+
+  if (fetchError) throw fetchError
+
+  const nextTotal = Math.max(0, (existing?.total_count ?? 0) + totalDelta)
+  const nextCompleted = Math.max(0, (existing?.completed_count ?? 0) + completedDelta)
+
+  const { error: upsertError } = await supabase.from("topic_progress").upsert(
+    {
+      user_id: params.userId,
+      topic,
+      total_count: nextTotal,
+      completed_count: nextCompleted,
+    },
+    { onConflict: "user_id,topic" }
+  )
+
+  if (upsertError) throw upsertError
+}
+
 async function getUserTeam(userId: string): Promise<{ team: DbTeam | null; members: DbMember[] }> {
   const { data: membershipRows, error: membershipError } = await supabase
     .from("team_members")
@@ -227,7 +288,7 @@ async function getTodayTasksForUsers(userIds: string[]): Promise<DbTask[]> {
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id,user_id,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
     .in("user_id", userIds)
     .eq("due_date", today)
     .order("reminder_time", { ascending: true })
@@ -240,28 +301,19 @@ async function getTodayTasksForUsers(userIds: string[]): Promise<DbTask[]> {
 
 async function getUserTopicProgress(userId: string): Promise<TopicProgress[]> {
   const { data, error } = await supabase
-    .from("tasks")
-    .select("id,topic,status")
+    .from("topic_progress")
+    .select("user_id,topic,total_count,completed_count")
     .eq("user_id", userId)
+    .order("topic", { ascending: true })
+    .returns<DbTopicProgress[]>()
 
   if (error) throw error
 
-  const grouped = new Map<string, { completed: number; total: number }>()
-
-  for (const task of data ?? []) {
-    const topic = (task.topic as string | null) ?? null
-    if (!topic) continue
-    const item = grouped.get(topic) ?? { completed: 0, total: 0 }
-    item.total += 1
-    if (task.status === "completed") item.completed += 1
-    grouped.set(topic, item)
-  }
-
-  return Array.from(grouped.entries()).map(([name, stats], index) => ({
+  return (data ?? []).map((row, index) => ({
     id: `topic-${index + 1}`,
-    name,
-    completed: stats.completed,
-    total: stats.total,
+    name: row.topic,
+    completed: row.completed_count,
+    total: row.total_count,
   }))
 }
 
@@ -428,6 +480,7 @@ export async function loadAppSnapshot(user: User): Promise<AppSnapshot> {
   assertSupabaseConfigured()
   const profile = await ensureProfile(user)
   await claimInvites(user)
+  await cleanupOldCompletedTasks(user.id)
   await carryForwardPendingTasks(user.id)
 
   const [{ team, members }, topics, doneThisWeek, streak] = await Promise.all([
@@ -502,16 +555,77 @@ export async function loadAppSnapshot(user: User): Promise<AppSnapshot> {
 export async function createTask(params: {
   userId: string
   teamId: string | null
+  taskScope?: TaskScope
   title: string
   topic?: string
   reminderTime?: string
 }) {
   assertSupabaseConfigured()
+  const taskScope: TaskScope = params.taskScope ?? "individual"
+
+  if (taskScope === "team") {
+    if (!params.teamId) {
+      throw new Error("Join or create a team to create team tasks.")
+    }
+
+    const { data: members, error: membersError } = await supabase
+      .from("team_members")
+      .select("user_id")
+      .eq("team_id", params.teamId)
+
+    if (membersError) throw membersError
+
+    const memberUserIds = (members ?? [])
+      .map((member) => member.user_id as string | null)
+      .filter((id): id is string => Boolean(id))
+
+    if (memberUserIds.length === 0) {
+      throw new Error("No active team members found for this team.")
+    }
+
+    const sharedTaskKey = crypto.randomUUID()
+    const payload = memberUserIds.map((memberUserId) => ({
+      user_id: memberUserId,
+      team_id: params.teamId,
+      task_scope: "team" as const,
+      shared_task_key: sharedTaskKey,
+      title: params.title,
+      topic: params.topic ?? null,
+      reminder_time: params.reminderTime ?? null,
+      due_date: getTodayLocalDateString(),
+      status: "pending" as const,
+      carried_forward: false,
+      reminder_sent_at: null,
+    }))
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert(payload)
+      .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+      .returns<DbTask[]>()
+
+    if (error) throw error
+
+    for (const row of data ?? []) {
+      if (!row.topic) continue
+      await adjustTopicProgress({ userId: row.user_id, topic: row.topic, totalDelta: 1 })
+    }
+
+    const ownTask = (data ?? []).find((task) => task.user_id === params.userId) ?? data?.[0]
+    if (!ownTask) {
+      throw new Error("Could not create team task")
+    }
+
+    return mapTask(ownTask)
+  }
+
   const { data, error } = await supabase
     .from("tasks")
     .insert({
       user_id: params.userId,
       team_id: params.teamId,
+      task_scope: "individual",
+      shared_task_key: null,
       title: params.title,
       topic: params.topic ?? null,
       reminder_time: params.reminderTime ?? null,
@@ -520,37 +634,103 @@ export async function createTask(params: {
       carried_forward: false,
       reminder_sent_at: null,
     })
-    .select("id,user_id,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
     .single<DbTask>()
 
   if (error) throw error
+
+  if (data.topic) {
+    await adjustTopicProgress({ userId: data.user_id, topic: data.topic, totalDelta: 1 })
+  }
+
   return mapTask(data)
 }
 
-export async function toggleTaskStatus(taskId: string, currentStatus: TaskStatus) {
+export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskScope" | "sharedTaskKey">) {
   assertSupabaseConfigured()
-  const nextStatus: TaskStatus = currentStatus === "completed" ? "pending" : "completed"
+  const nextStatus: TaskStatus = task.status === "completed" ? "pending" : "completed"
+
+  const sourceRowsQuery = supabase
+    .from("tasks")
+    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+
+  if (task.taskScope === "team" && task.sharedTaskKey) {
+    sourceRowsQuery.eq("shared_task_key", task.sharedTaskKey)
+  } else {
+    sourceRowsQuery.eq("id", task.id)
+  }
+
+  const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
+  if (sourceError) throw sourceError
 
   const payload: { status: TaskStatus; reminder_sent_at?: string | null } = { status: nextStatus }
   if (nextStatus === "pending") {
     payload.reminder_sent_at = null
   }
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .update(payload)
-    .eq("id", taskId)
-    .select("id,user_id,title,topic,due_date,reminder_time,status,carried_forward,team_id")
-    .single<DbTask>()
+  const query = supabase.from("tasks").update(payload)
+
+  if (task.taskScope === "team" && task.sharedTaskKey) {
+    query.eq("shared_task_key", task.sharedTaskKey)
+  } else {
+    query.eq("id", task.id)
+  }
+
+  const { data, error } = await query
+    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .returns<DbTask[]>()
 
   if (error) throw error
-  return mapTask(data)
+
+  for (const row of sourceRows ?? []) {
+    if (!row.topic) continue
+    await adjustTopicProgress({
+      userId: row.user_id,
+      topic: row.topic,
+      completedDelta: nextStatus === "completed" ? 1 : -1,
+    })
+  }
+
+  const updatedTask = (data ?? []).find((row) => row.id === task.id) ?? data?.[0]
+  if (!updatedTask) throw new Error("Could not update task")
+  return mapTask(updatedTask)
 }
 
-export async function deleteTask(taskId: string) {
+export async function deleteTask(task: Pick<Task, "id" | "taskScope" | "sharedTaskKey">) {
   assertSupabaseConfigured()
-  const { error } = await supabase.from("tasks").delete().eq("id", taskId)
+  const sourceRowsQuery = supabase
+    .from("tasks")
+    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+
+  if (task.taskScope === "team" && task.sharedTaskKey) {
+    sourceRowsQuery.eq("shared_task_key", task.sharedTaskKey)
+  } else {
+    sourceRowsQuery.eq("id", task.id)
+  }
+
+  const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
+  if (sourceError) throw sourceError
+
+  const query = supabase.from("tasks").delete()
+
+  if (task.taskScope === "team" && task.sharedTaskKey) {
+    query.eq("shared_task_key", task.sharedTaskKey)
+  } else {
+    query.eq("id", task.id)
+  }
+
+  const { error } = await query
   if (error) throw error
+
+  for (const row of sourceRows ?? []) {
+    if (!row.topic) continue
+    await adjustTopicProgress({
+      userId: row.user_id,
+      topic: row.topic,
+      totalDelta: -1,
+      completedDelta: row.status === "completed" ? -1 : 0,
+    })
+  }
 }
 
 export async function createTeam(owner: User): Promise<{ teamId: string; code: string }> {
@@ -729,7 +909,7 @@ export async function getDueReminderTasks(userId: string): Promise<Task[]> {
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id,user_id,title,topic,due_date,reminder_time,status,carried_forward,team_id")
+    .select("id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id")
     .eq("user_id", userId)
     .eq("due_date", today)
     .eq("status", "pending")

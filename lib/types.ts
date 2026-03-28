@@ -1,10 +1,14 @@
 export type TaskStatus = "pending" | "completed"
+export type TaskScope = "individual" | "team"
 
 export interface Task {
   id: string
   title: string
   time: string
   status: TaskStatus
+  taskScope?: TaskScope
+  sharedTaskKey?: string
+  teamId?: string | null
   carriedForward?: boolean
   topic?: string
   dueDate?: string

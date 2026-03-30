@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Check, Trash2, Clock, ArrowUpFromLine, Plus, CalendarClock, ChevronDown, Tag } from "lucide-react"
+import { Check, Trash2, Clock, ArrowUpFromLine, Plus, CalendarClock, ChevronDown, Tag, Pencil, Save, X } from "lucide-react"
 import { createPortal } from "react-dom"
-import { createTask, deleteTask, toggleTaskStatus } from "@/lib/dailybrick-api"
+import { createTask, deleteTask, toggleTaskStatus, updateTask } from "@/lib/dailybrick-api"
 import type { Task, TaskScope } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,10 +24,96 @@ interface TaskRowProps {
   task: Task
   onToggle: (id: string) => void
   onDelete: (id: string) => void
+  onEdit: (updates: { title: string; topic?: string; reminderTime?: string }) => Promise<void>
   disabled?: boolean
 }
 
-function TaskRow({ task, onToggle, onDelete, disabled }: TaskRowProps) {
+function TaskRow({ task, onToggle, onDelete, onEdit, disabled }: TaskRowProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(task.title)
+  const [editTopic, setEditTopic] = useState(task.topic ?? "")
+  const [editTime, setEditTime] = useState(task.reminderTime ?? "09:00")
+
+  useEffect(() => {
+    if (isEditing) return
+    setEditTitle(task.title)
+    setEditTopic(task.topic ?? "")
+    setEditTime(task.reminderTime ?? "09:00")
+  }, [isEditing, task.reminderTime, task.title, task.topic])
+
+  const handleSave = async () => {
+    if (!editTitle.trim()) return
+    await onEdit({
+      title: editTitle.trim(),
+      topic: editTopic.trim() || undefined,
+      reminderTime: editTime,
+    })
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditTitle(task.title)
+    setEditTopic(task.topic ?? "")
+    setEditTime(task.reminderTime ?? "09:00")
+    setIsEditing(false)
+  }
+
+  if (isEditing) {
+    return (
+      <div className="py-3 px-4 rounded-xl border border-border bg-card/70">
+        <div className="flex flex-col gap-2">
+          <Input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            placeholder="Task title"
+            className="h-8 bg-secondary border-border text-sm"
+            disabled={disabled}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={editTopic}
+              onChange={(e) => setEditTopic(e.target.value)}
+              placeholder="Topic"
+              className="h-8 w-[130px] bg-secondary border-border text-sm"
+              disabled={disabled}
+            />
+            <div className="flex items-center gap-2 min-w-[118px]">
+              <input
+                type="time"
+                value={editTime}
+                onChange={(e) => setEditTime(e.target.value)}
+                className="h-8 w-full px-2 bg-secondary border border-border rounded-lg text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={disabled}
+              />
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs border-primary/30 text-primary hover:text-primary hover:bg-primary/12 hover:border-primary/45"
+                onClick={() => void handleSave()}
+                disabled={disabled || !editTitle.trim()}
+              >
+                <Save className="w-3.5 h-3.5 mr-1" />
+                Save
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs hover:text-primary hover:bg-primary/10 hover:border-primary/40"
+                onClick={handleCancel}
+                disabled={disabled}
+              >
+                <X className="w-3.5 h-3.5 mr-1" />
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className={cn(
@@ -90,13 +176,22 @@ function TaskRow({ task, onToggle, onDelete, disabled }: TaskRowProps) {
       </span>
 
       {!disabled && (
-        <button
-          onClick={() => onDelete(task.id)}
-          aria-label="Delete task"
-          className="sm:opacity-0 sm:group-hover:opacity-100 opacity-100 w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-150 shrink-0"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 opacity-100 transition-all duration-150">
+          <button
+            onClick={() => setIsEditing(true)}
+            aria-label="Edit task"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all duration-150 shrink-0"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(task.id)}
+            aria-label="Delete task"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-150 shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
     </div>
   )
@@ -209,6 +304,36 @@ export function TasksSection({
     }
   }
 
+  const handleEditTask = async (
+    task: Task,
+    carried: boolean,
+    updates: { title: string; topic?: string; reminderTime?: string }
+  ) => {
+    try {
+      setSaving(true)
+      const updated = await updateTask({
+        task,
+        title: updates.title,
+        topic: updates.topic,
+        reminderTime: updates.reminderTime,
+      })
+
+      if (carried) {
+        setCarriedTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+      } else {
+        setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)))
+      }
+
+      await refreshAll()
+      showNotification?.("Task updated")
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update task"
+      showNotification?.(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const selectTopic = (topic: string) => {
     setNewTopic(topic)
     setShowTopicDropdown(false)
@@ -275,6 +400,7 @@ export function TasksSection({
                 task={task}
                 onToggle={() => void toggleTask(task, true)}
                 onDelete={() => void handleDeleteTask(task.id, true)}
+                onEdit={(updates) => handleEditTask(task, true, updates)}
                 disabled={saving}
               />
             ))}
@@ -308,6 +434,7 @@ export function TasksSection({
                 task={task}
                 onToggle={() => void toggleTask(task, false)}
                 onDelete={() => void handleDeleteTask(task.id, false)}
+                onEdit={(updates) => handleEditTask(task, false, updates)}
                 disabled={saving}
               />
             ))
@@ -323,7 +450,7 @@ export function TasksSection({
                 "h-8 px-3 rounded-lg text-xs font-medium border transition-colors",
                 taskScope === "individual"
                   ? "bg-primary/15 text-primary border-primary/30"
-                  : "bg-secondary text-muted-foreground border-border hover:text-foreground"
+                  : "bg-secondary text-muted-foreground border-border hover:text-primary hover:bg-primary/10 hover:border-primary/35"
               )}
             >
               Individual task
@@ -335,7 +462,7 @@ export function TasksSection({
                 "h-8 px-3 rounded-lg text-xs font-medium border transition-colors",
                 taskScope === "team"
                   ? "bg-chart-2/20 text-chart-2 border-chart-2/40"
-                  : "bg-secondary text-muted-foreground border-border hover:text-foreground",
+                  : "bg-secondary text-muted-foreground border-border hover:text-primary hover:bg-primary/10 hover:border-primary/35",
                 !teamId && "opacity-50 cursor-not-allowed"
               )}
             >
@@ -384,7 +511,7 @@ export function TasksSection({
                   <button
                     ref={triggerRef}
                     onClick={openDropdown}
-                    className="flex items-center gap-1.5 h-9 w-full px-3 bg-secondary border border-border rounded-xl text-sm text-foreground hover:bg-secondary/80 transition-colors"
+                    className="flex items-center gap-1.5 h-9 w-full px-3 bg-secondary border border-border rounded-xl text-sm text-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/35 transition-colors"
                   >
                     <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <span

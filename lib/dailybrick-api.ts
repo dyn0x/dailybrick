@@ -158,6 +158,7 @@ function mapTask(task: DbTask): Task {
     title: task.title,
     topic: task.topic ?? undefined,
     dueDate: task.due_date,
+    reminderTime: task.reminder_time ? task.reminder_time.slice(0, 5) : undefined,
     time: time24To12Label(task.reminder_time),
     status: task.status,
     carriedForward: task.carried_forward,
@@ -943,6 +944,94 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
   const updatedTask = (data ?? []).find((row) => row.id === task.id) ?? data?.[0]
   if (!updatedTask) throw new Error("Could not update task")
   return mapTask(updatedTask)
+}
+
+export async function updateTask(params: {
+  task: Pick<Task, "id" | "taskScope" | "sharedTaskKey">
+  title: string
+  topic?: string
+  reminderTime?: string
+}) {
+  assertSupabaseConfigured()
+
+  const title = params.title.trim()
+  if (!title) {
+    throw new Error("Task title is required")
+  }
+
+  const normalizedTopic = params.topic?.trim() ?? ""
+  const nextTopic = normalizedTopic === "" ? null : normalizedTopic
+  const nextReminderTime = params.reminderTime?.trim() || null
+
+  const sourceRowsQuery = supabase
+    .from("tasks")
+    .select(DB_TASK_SELECT)
+
+  if (params.task.taskScope === "team" && params.task.sharedTaskKey) {
+    sourceRowsQuery.eq("shared_task_key", params.task.sharedTaskKey)
+  } else {
+    sourceRowsQuery.eq("id", params.task.id)
+  }
+
+  const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
+  if (sourceError) throw sourceError
+
+  const query = supabase
+    .from("tasks")
+    .update({
+      title,
+      topic: nextTopic,
+      reminder_time: nextReminderTime,
+      reminder_sent_at: null,
+    })
+
+  if (params.task.taskScope === "team" && params.task.sharedTaskKey) {
+    query.eq("shared_task_key", params.task.sharedTaskKey)
+  } else {
+    query.eq("id", params.task.id)
+  }
+
+  const { data: updatedRows, error: updateError } = await query
+    .select(DB_TASK_SELECT)
+    .returns<DbTask[]>()
+
+  if (updateError) throw updateError
+
+  for (const row of sourceRows ?? []) {
+    const oldTopic = row.topic ?? null
+    if (oldTopic === nextTopic) continue
+
+    if (oldTopic) {
+      await adjustTopicProgress({
+        userId: row.user_id,
+        topic: oldTopic,
+        totalDelta: -1,
+        completedDelta: row.status === "completed" ? -1 : 0,
+      })
+    }
+
+    if (nextTopic) {
+      await adjustTopicProgress({
+        userId: row.user_id,
+        topic: nextTopic,
+        totalDelta: 1,
+        completedDelta: row.status === "completed" ? 1 : 0,
+      })
+    }
+  }
+
+  const myUpdatedRow = (updatedRows ?? []).find((row) => row.id === params.task.id) ?? updatedRows?.[0]
+  if (!myUpdatedRow) {
+    throw new Error("Could not update task")
+  }
+
+  try {
+    await syncTaskWithGoogleCalendar(myUpdatedRow)
+  } catch {
+    // Calendar sync is best-effort and must not block task updates.
+  }
+
+  return mapTask(myUpdatedRow)
 }
 
 export async function deleteTask(task: Pick<Task, "id" | "taskScope" | "sharedTaskKey">) {

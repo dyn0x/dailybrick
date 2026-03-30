@@ -32,6 +32,11 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { createJournalNote, deleteJournalNote, getJournalNotes, updateJournalNote } from "@/lib/dailybrick-api"
 import type { JournalFontStyle, JournalNote } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -304,32 +309,57 @@ export function JournalPage({ userId, showNotification }: JournalPageProps) {
   const handlePrintCurrent = () => {
     if (!selectedNote) return
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=900,height=700")
-    if (!printWindow) {
-      showNotification("Could not open print dialog window")
+    const iframe = document.createElement("iframe")
+    iframe.style.position = "fixed"
+    iframe.style.right = "0"
+    iframe.style.bottom = "0"
+    iframe.style.width = "0"
+    iframe.style.height = "0"
+    iframe.style.border = "0"
+    iframe.setAttribute("aria-hidden", "true")
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentWindow?.document
+    if (!doc || !iframe.contentWindow) {
+      iframe.remove()
+      showNotification("Could not initialize print view")
       return
     }
+
+    const escapedTitle = selectedNote.title
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
 
     const printable = `<!doctype html>
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>${selectedNote.title}</title>
+          <title>${escapedTitle}</title>
           <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; margin: 40px; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 40px; color: #111; }
             h1 { margin: 0 0 16px; font-size: 22px; }
+            p, li { line-height: 1.5; }
           </style>
         </head>
         <body>
-          <h1>${selectedNote.title}</h1>
+          <h1>${escapedTitle}</h1>
           ${getCurrentEditorHtml()}
-          <script>window.onload = function(){ window.print(); window.close(); }</script>
         </body>
       </html>`
 
-    printWindow.document.open()
-    printWindow.document.write(printable)
-    printWindow.document.close()
+    doc.open()
+    doc.write(printable)
+    doc.close()
+
+    window.setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+      } finally {
+        window.setTimeout(() => iframe.remove(), 500)
+      }
+    }, 120)
   }
 
   const saveStatusLabel =
@@ -363,148 +393,151 @@ export function JournalPage({ userId, showNotification }: JournalPageProps) {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
-      <aside className="rounded-3xl border border-border bg-card/80 backdrop-blur-sm p-3 md:p-4 flex flex-col max-h-[calc(100vh-10rem)] shadow-[0_20px_80px_-60px_rgba(0,0,0,0.55)]">
-        <div className="flex items-center justify-between mb-3 rounded-2xl border border-border/60 bg-gradient-to-r from-card via-secondary/35 to-card px-3 py-2">
-          <div>
-            <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Journal</p>
-            <p className="text-sm font-semibold text-foreground">{notes.length} note{notes.length === 1 ? "" : "s"}</p>
+      <Card className="py-3 md:py-4 gap-3 overflow-hidden border-border/70 shadow-lg shadow-black/5">
+        <CardHeader className="px-3 md:px-4 pb-0">
+          <div className="flex items-center justify-between rounded-xl border border-border/60 bg-secondary/25 p-2.5">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Journal</p>
+              <p className="text-sm font-semibold text-foreground">{notes.length} note{notes.length === 1 ? "" : "s"}</p>
+            </div>
+            <Button size="sm" className="h-8 rounded-lg text-xs" onClick={() => void handleCreateNote()} disabled={isCreating}>
+              <Plus className="w-3.5 h-3.5 mr-1" />
+              New
+            </Button>
           </div>
-          <Button
-            size="sm"
-            className="h-8 rounded-lg text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={() => void handleCreateNote()}
-            disabled={isCreating}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1" />
-            New
-          </Button>
-        </div>
+        </CardHeader>
+        <CardContent className="px-3 md:px-4 pb-1">
+          <ScrollArea className="h-[calc(100vh-16rem)] pr-1">
+            <div className="space-y-2">
+              {notes.length === 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleCreateNote()}
+                  className="w-full rounded-2xl border border-dashed border-border px-4 py-8 text-center hover:border-primary/40 hover:bg-secondary/40 transition-colors"
+                >
+                  <FileText className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-foreground">Create your first note</p>
+                  <p className="text-xs text-muted-foreground mt-1">Notes auto-save and sync to cloud.</p>
+                </button>
+              )}
 
-        <div className="overflow-y-auto pr-1 space-y-2">
-          {notes.length === 0 && (
-            <button
-              type="button"
-              onClick={() => void handleCreateNote()}
-              className="w-full rounded-2xl border border-dashed border-border px-4 py-8 text-center hover:border-primary/40 hover:bg-secondary/40 transition-colors"
-            >
-              <FileText className="w-5 h-5 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm text-foreground">Create your first note</p>
-              <p className="text-xs text-muted-foreground mt-1">Notes auto-save and sync to cloud.</p>
-            </button>
-          )}
+              {notes.map((note) => {
+                const preview = extractPreview(note.contentHtml)
+                const isActive = note.id === selectedNoteId
 
-          {notes.map((note) => {
-            const preview = extractPreview(note.contentHtml)
-            const isActive = note.id === selectedNoteId
+                return (
+                  <button
+                    key={note.id}
+                    type="button"
+                    onClick={() => syncSelectionDraft(note)}
+                    className={cn(
+                      "w-full text-left rounded-2xl border p-3 transition-all duration-150",
+                      isActive
+                        ? "border-primary/40 bg-primary/10 shadow-[0_8px_24px_-20px_rgba(16,185,129,0.8)]"
+                        : "border-border bg-card hover:bg-secondary/35"
+                    )}
+                  >
+                    <p className="text-sm font-semibold text-foreground truncate">{note.title}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1 min-h-8">{preview || "No content yet"}</p>
+                    <p className="text-[11px] text-muted-foreground/80 mt-2">{formatUpdatedAt(note.updatedAt)}</p>
+                  </button>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
 
-            return (
-              <button
-                key={note.id}
-                type="button"
-                onClick={() => syncSelectionDraft(note)}
-                className={cn(
-                  "w-full text-left rounded-2xl border p-3 transition-all duration-150",
-                  isActive
-                    ? "border-primary/40 bg-primary/10 shadow-[0_8px_24px_-20px_rgba(16,185,129,0.8)]"
-                    : "border-border bg-card/60 hover:bg-secondary/40"
-                )}
-              >
-                <p className="text-sm font-semibold text-foreground truncate">{note.title}</p>
-                <p className="text-xs text-muted-foreground line-clamp-2 mt-1 min-h-8">{preview || "No content yet"}</p>
-                <p className="text-[11px] text-muted-foreground/80 mt-2">{formatUpdatedAt(note.updatedAt)}</p>
-              </button>
-            )
-          })}
-        </div>
-      </aside>
-
-      <section className="rounded-3xl border border-border bg-card/80 backdrop-blur-sm p-3 md:p-4 flex flex-col min-h-[70vh] shadow-[0_24px_90px_-60px_rgba(0,0,0,0.55)]">
+      <Card className="py-3 md:py-4 gap-3 overflow-hidden border-border/70 shadow-lg shadow-black/5">
         {selectedNote ? (
           <>
-            <div className="flex flex-col gap-3 border-b border-border pb-3 sticky top-0 bg-card/95 backdrop-blur-md z-[2] rounded-2xl">
+            <CardHeader className="px-3 md:px-4 pb-0 space-y-3">
               <div className="flex flex-wrap items-center gap-2 justify-between">
                 <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Note title"
-                  className="h-10 text-base font-semibold max-w-xl"
+                  className="h-10 text-base font-semibold max-w-xl bg-background/70"
                   required
                 />
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  <select
-                    value={fontStyle}
-                    onChange={(e) => setFontStyle(e.target.value as JournalFontStyle)}
-                    className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground"
-                    aria-label="Journal font style"
-                  >
-                    {FONT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={textSize}
-                    onChange={(e) => setTextSize(e.target.value)}
-                    className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground"
-                    aria-label="Journal text size"
-                  >
-                    {TEXT_SIZE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <Button variant="outline" className={cn("h-9 rounded-lg text-xs", ACCENT_HOVER_BUTTON)} onClick={handleCopyCurrent}>
-                    <Copy className="w-3.5 h-3.5 mr-1.5" />
-                    Copy
-                  </Button>
-
-                  <Button variant="outline" className={cn("h-9 rounded-lg text-xs", ACCENT_HOVER_BUTTON)} onClick={handlePasteIntoEditor}>
-                    <ClipboardPaste className="w-3.5 h-3.5 mr-1.5" />
-                    Paste
-                  </Button>
-
-                  <Button variant="outline" className={cn("h-9 rounded-lg text-xs", ACCENT_HOVER_BUTTON)} onClick={handlePrintCurrent}>
-                    <Printer className="w-3.5 h-3.5 mr-1.5" />
-                    Print
-                  </Button>
-
-                  <Button variant="outline" className={cn("h-9 rounded-lg text-xs", ACCENT_HOVER_BUTTON)} onClick={handleDownloadCurrent}>
-                    <Download className="w-3.5 h-3.5 mr-1.5" />
-                    Download
-                  </Button>
-
-                  <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="h-9 rounded-lg text-xs text-destructive hover:text-destructive">
-                        <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                        Delete
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="rounded-2xl">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete this note?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This action cannot be undone. The note will be removed from both local view and cloud sync.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          onClick={() => void handleDeleteSelected()}
-                        >
-                          Delete Note
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
+                <Badge variant={saveState === "error" ? "destructive" : saveState === "saved" ? "default" : "secondary"}>
+                  {saveStatusLabel}
+                </Badge>
               </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={fontStyle} onValueChange={(value) => setFontStyle(value as JournalFontStyle)}>
+                  <SelectTrigger className="h-9 min-w-30 rounded-xl">
+                    <SelectValue placeholder="Font" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FONT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={textSize} onValueChange={(value) => setTextSize(value)}>
+                  <SelectTrigger className="h-9 min-w-20 rounded-xl">
+                    <SelectValue placeholder="Size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEXT_SIZE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Button variant="outline" className={cn("h-9 rounded-xl text-xs", ACCENT_HOVER_BUTTON)} onClick={handleCopyCurrent}>
+                  <Copy className="w-3.5 h-3.5 mr-1.5" />
+                  Copy
+                </Button>
+                <Button variant="outline" className={cn("h-9 rounded-xl text-xs", ACCENT_HOVER_BUTTON)} onClick={handlePasteIntoEditor}>
+                  <ClipboardPaste className="w-3.5 h-3.5 mr-1.5" />
+                  Paste
+                </Button>
+                <Button variant="outline" className={cn("h-9 rounded-xl text-xs", ACCENT_HOVER_BUTTON)} onClick={handlePrintCurrent}>
+                  <Printer className="w-3.5 h-3.5 mr-1.5" />
+                  Print
+                </Button>
+                <Button variant="outline" className={cn("h-9 rounded-xl text-xs", ACCENT_HOVER_BUTTON)} onClick={handleDownloadCurrent}>
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  Download
+                </Button>
+
+                <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="h-9 rounded-xl text-xs text-destructive hover:text-destructive">
+                      <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-2xl">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this note?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This action cannot be undone. The note will be removed from both local view and cloud sync.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => void handleDeleteSelected()}
+                      >
+                        Delete Note
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+
+              <Separator />
 
               <div className="flex flex-wrap items-center gap-1.5">
                 <Button variant="outline" size="sm" className={cn("h-8 px-2", ACCENT_HOVER_BUTTON)} onClick={() => runFormatCommand("bold")}>
@@ -532,31 +565,31 @@ export function JournalPage({ userId, showNotification }: JournalPageProps) {
                   <Type className="w-3.5 h-3.5" />
                 </Button>
               </div>
-            </div>
+            </CardHeader>
 
-            <div className="flex-1 pt-3">
+            <CardContent className="px-3 md:px-4 pt-0 flex-1">
               <div
                 ref={editorRef}
                 contentEditable
                 suppressContentEditableWarning
                 data-placeholder="Start writing your thoughts..."
-                className="journal-editor min-h-[50vh] rounded-2xl border border-border bg-background/50 p-4 outline-none overflow-y-auto"
+                className="journal-editor min-h-[58vh] rounded-2xl border border-border bg-background/60 p-5 outline-none overflow-y-auto"
                 onInput={(event) => {
                   setContentHtml((event.currentTarget as HTMLDivElement).innerHTML)
                 }}
                 style={{ fontFamily: currentFontFamily, fontSize: textSize }}
               />
-            </div>
+            </CardContent>
 
-            <div className="pt-3 border-t border-border mt-3 flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">{saveStatusLabel}</p>
+            <div className="px-3 md:px-4 pt-1 border-t border-border mt-1 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Auto-sync enabled</p>
               <p className="text-[11px] text-muted-foreground">
                 Updated {selectedNote.updatedAt ? formatUpdatedAt(selectedNote.updatedAt) : "just now"}
               </p>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
+          <CardContent className="px-3 md:px-4 flex-1 flex items-center justify-center">
             <div className="text-center max-w-sm">
               <FileText className="w-7 h-7 text-muted-foreground mx-auto mb-3" />
               <p className="text-base font-medium text-foreground mb-1">No note selected</p>
@@ -566,9 +599,9 @@ export function JournalPage({ userId, showNotification }: JournalPageProps) {
                 Create Note
               </Button>
             </div>
-          </div>
+          </CardContent>
         )}
-      </section>
+      </Card>
     </div>
   )
 }

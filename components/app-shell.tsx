@@ -454,7 +454,9 @@ export function AppShell() {
                     showNotification={showNotification}
                   />
                 )}
-                {activePage === "progress" && <ProgressPage tasks={tasks} />}
+                {activePage === "progress" && (
+                  <ProgressPage userId={user.id} teamMembers={teamMembers} />
+                )}
                 {activePage === "journal" && (
                   <JournalPage
                     userId={user.id}

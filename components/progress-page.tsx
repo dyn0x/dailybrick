@@ -2,14 +2,15 @@
 
 import { useMemo } from "react"
 import { BarChart3 } from "lucide-react"
-import type { Task } from "@/lib/types"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import type { TeamMember } from "@/lib/types"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 
 interface ProgressPageProps {
-  tasks: Task[]
+  userId: string
+  teamMembers: TeamMember[]
 }
 
-export function ProgressPage({ tasks }: ProgressPageProps) {
+export function ProgressPage({ userId, teamMembers }: ProgressPageProps) {
   const chartData = useMemo(() => {
     // Generate last 30 days
     const today = new Date()
@@ -21,50 +22,94 @@ export function ProgressPage({ tasks }: ProgressPageProps) {
       thirtyDaysData.push(date)
     }
 
-    // Count completed tasks per day
+    // Count completed tasks per day for each team member
     const tasksPerDay = thirtyDaysData.map((date) => {
       const dateStr = date.toISOString().split("T")[0]
-      const completedCount = tasks.filter(
-        (task) => task.status === "completed" && task.dueDate === dateStr
-      ).length
-      
-      return {
+      const data: any = {
         date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        tasks: completedCount,
         fullDate: dateStr,
       }
+
+      teamMembers.forEach((member) => {
+        const completedCount = member.tasks.filter(
+          (task) => task.status === "completed" && task.dueDate === dateStr
+        ).length
+        data[member.id] = completedCount
+      })
+
+      return data
     })
 
     return tasksPerDay
-  }, [tasks])
+  }, [teamMembers])
 
-  const totalCompleted = tasks.filter((t) => t.status === "completed").length
-  const averagePerDay = chartData.length > 0 ? Math.round(totalCompleted / 30) : 0
-  const maxDay = Math.max(...chartData.map((d) => d.tasks), 0)
+  // Calculate stats for each team member
+  const memberStats = useMemo(() => {
+    return teamMembers.map((member) => {
+      const totalCompleted = member.tasks.filter((t) => t.status === "completed").length
+      const averagePerDay = Math.round(totalCompleted / 30)
+      const maxDay = Math.max(
+        ...chartData.map((d) => d[member.id] || 0),
+        0
+      )
+      return {
+        member,
+        totalCompleted,
+        averagePerDay,
+        maxDay,
+      }
+    })
+  }, [teamMembers, chartData])
+
+  const colors = ["hsl(var(--primary))", "hsl(196 81% 53%)"]
+
+  const currentUserMember = teamMembers.find((m) => m.id === userId)
+  const otherMember = teamMembers.find((m) => m.id !== userId)
 
   return (
     <div className="flex flex-col gap-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-xs text-muted-foreground mb-2">Total Completed</p>
-          <p className="text-3xl font-bold text-primary">{totalCompleted}</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-xs text-muted-foreground mb-2">Avg per Day</p>
-          <p className="text-3xl font-bold text-primary">{averagePerDay}</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-xs text-muted-foreground mb-2">Best Day</p>
-          <p className="text-3xl font-bold text-primary">{maxDay}</p>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {memberStats.map((stat, idx) => {
+          const isCurrentUser = stat.member.id === userId
+          return (
+            <div
+              key={stat.member.id}
+              className="bg-card border border-border rounded-2xl p-4"
+              style={{
+                borderColor: `${colors[idx]}40`,
+              }}
+            >
+              <p className="text-xs text-muted-foreground mb-1">{stat.member.name}</p>
+              <p className="text-2xl font-bold mb-3" style={{ color: colors[idx] }}>
+                {stat.totalCompleted}
+              </p>
+              <p className="text-xs text-muted-foreground">Total Completed</p>
+            </div>
+          )
+        })}
+        {memberStats.map((stat, idx) => (
+          <div
+            key={`avg-${stat.member.id}`}
+            className="bg-card border border-border rounded-2xl p-4"
+            style={{
+              borderColor: `${colors[idx]}40`,
+            }}
+          >
+            <p className="text-xs text-muted-foreground mb-1">{stat.member.name}</p>
+            <p className="text-2xl font-bold mb-3" style={{ color: colors[idx] }}>
+              {stat.averagePerDay}
+            </p>
+            <p className="text-xs text-muted-foreground">Avg/Day</p>
+          </div>
+        ))}
       </div>
 
       {/* Chart */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
           <BarChart3 className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">Tasks Completed - Last 30 Days</h3>
+          <h3 className="text-sm font-semibold text-foreground">Team Progress - Last 30 Days</h3>
         </div>
         <div className="p-5">
           {chartData.length === 0 ? (
@@ -82,7 +127,7 @@ export function ProgressPage({ tasks }: ProgressPageProps) {
                 />
                 <YAxis
                   tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
-                  domain={[0, Math.ceil(maxDay * 1.2) || 1]}
+                  domain={[0, Math.max(...memberStats.map((s) => s.maxDay * 1.2)) || 1]}
                 />
                 <Tooltip
                   contentStyle={{
@@ -94,12 +139,22 @@ export function ProgressPage({ tasks }: ProgressPageProps) {
                   labelStyle={{ color: "hsl(var(--foreground))" }}
                   formatter={(value) => [value, "Tasks"]}
                 />
-                <Bar
-                  dataKey="tasks"
-                  fill="hsl(var(--primary))"
-                  radius={[8, 8, 0, 0]}
-                  animationDuration={500}
+                <Legend
+                  wrapperStyle={{ paddingTop: "20px" }}
+                  formatter={(value) => {
+                    const member = teamMembers.find((m) => m.id === value)
+                    return member?.name || value
+                  }}
                 />
+                {teamMembers.map((member, idx) => (
+                  <Bar
+                    key={member.id}
+                    dataKey={member.id}
+                    fill={colors[idx]}
+                    radius={[8, 8, 0, 0]}
+                    animationDuration={500}
+                  />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           )}

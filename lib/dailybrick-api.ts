@@ -174,8 +174,6 @@ function mapJournalNote(note: DbJournalNote): JournalNote {
   }
 }
 
-// Calendar sync removed: Google Calendar integration deleted per request.
-
 async function ensureProfile(user: User): Promise<UserProfile> {
   const defaultName = user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "DailyBrick User"
   const email = user.email ?? ""
@@ -677,15 +675,6 @@ export async function createTask(params: {
       await adjustTopicProgress({ userId: row.user_id, topic: row.topic, totalDelta: 1 })
     }
 
-    const myTaskRow = (data ?? []).find((row) => row.user_id === params.userId)
-    if (myTaskRow) {
-      try {
-        await syncTaskWithGoogleCalendar(myTaskRow)
-      } catch {
-        // Calendar sync is best-effort and must not block task creation.
-      }
-    }
-
     const ownTask = (data ?? []).find((task) => task.user_id === params.userId) ?? data?.[0]
     if (!ownTask) {
       throw new Error("Could not create team task")
@@ -708,7 +697,6 @@ export async function createTask(params: {
       status: "pending",
       carried_forward: false,
       reminder_sent_at: null,
-      calendar_event_id: null,
     })
     .select(DB_TASK_SELECT)
     .single<DbTask>()
@@ -717,12 +705,6 @@ export async function createTask(params: {
 
   if (data.topic) {
     await adjustTopicProgress({ userId: data.user_id, topic: data.topic, totalDelta: 1 })
-  }
-
-  try {
-    await syncTaskWithGoogleCalendar(data)
-  } catch {
-    // Calendar sync is best-effort and must not block task creation.
   }
 
   return mapTask(data)
@@ -771,15 +753,6 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
       topic: row.topic,
       completedDelta: nextStatus === "completed" ? 1 : -1,
     })
-  }
-
-  const myUpdatedRow = (data ?? []).find((row) => row.id === task.id)
-  if (myUpdatedRow) {
-    try {
-      await syncTaskWithGoogleCalendar(myUpdatedRow)
-    } catch {
-      // Calendar sync is best-effort and must not block task updates.
-    }
   }
 
   const updatedTask = (data ?? []).find((row) => row.id === task.id) ?? data?.[0]
@@ -866,12 +839,6 @@ export async function updateTask(params: {
     throw new Error("Could not update task")
   }
 
-  try {
-    await syncTaskWithGoogleCalendar(myUpdatedRow)
-  } catch {
-    // Calendar sync is best-effort and must not block task updates.
-  }
-
   return mapTask(myUpdatedRow)
 }
 
@@ -889,15 +856,6 @@ export async function deleteTask(task: Pick<Task, "id" | "taskScope" | "sharedTa
 
   const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
   if (sourceError) throw sourceError
-
-  const mySourceRow = (sourceRows ?? []).find((row) => row.id === task.id)
-  if (mySourceRow?.calendar_event_id) {
-    try {
-      await syncTaskWithGoogleCalendar({ ...mySourceRow, status: "completed" })
-    } catch {
-      // Calendar sync is best-effort and must not block task deletion.
-    }
-  }
 
   const query = supabase.from("tasks").delete()
 

@@ -326,24 +326,6 @@ export function AppShell() {
   useEffect(() => {
     if (!user) return;
 
-    if (typeof window === "undefined") return;
-
-    const noticeKey = `dailybrick-reminder-mode-notice:${user.id}`;
-    if (window.sessionStorage.getItem(noticeKey) === "1") return;
-
-    const provider = user.app_metadata?.provider;
-    if (provider !== "google") {
-      showNotification(
-        "Email account detected: reminders will use in-app and browser notifications.",
-      );
-    }
-
-    window.sessionStorage.setItem(noticeKey, "1");
-  }, [showNotification, user]);
-
-  useEffect(() => {
-    if (!user) return;
-
     const runReminderPoll = async () => {
       try {
         const due = await getDueReminderTasks(user.id);

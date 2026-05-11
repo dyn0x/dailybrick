@@ -1069,15 +1069,18 @@ export async function getDueReminderTasks(userId: string): Promise<Task[]> {
   return (data ?? []).map(mapTask)
 }
 
-export async function getJournalNotes(userId: string): Promise<JournalNote[]> {
+export async function getJournalNotes(userId: string, teamId: string | null): Promise<JournalNote[]> {
   assertSupabaseConfigured()
 
-  const { data, error } = await supabase
-    .from("journal_notes")
-    .select(DB_JOURNAL_SELECT)
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false })
-    .returns<DbJournalNote[]>()
+  let query = supabase.from("journal_notes").select(DB_JOURNAL_SELECT).order("updated_at", { ascending: false })
+
+  if (teamId) {
+    query = query.or(`user_id.eq.${userId},team_id.eq.${teamId}`)
+  } else {
+    query = query.eq("user_id", userId)
+  }
+
+  const { data, error } = await query.returns<DbJournalNote[]>()
 
   if (error) throw error
   return (data ?? []).map(mapJournalNote)
@@ -1085,6 +1088,7 @@ export async function getJournalNotes(userId: string): Promise<JournalNote[]> {
 
 export async function createJournalNote(params: {
   userId: string
+  teamId?: string | null
   title: string
   contentHtml?: string
   fontStyle?: JournalFontStyle
@@ -1097,6 +1101,7 @@ export async function createJournalNote(params: {
     .from("journal_notes")
     .insert({
       user_id: params.userId,
+      team_id: params.teamId ?? null,
       title,
       content_html: params.contentHtml ?? "",
       font_style: params.fontStyle ?? "system",

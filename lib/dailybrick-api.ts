@@ -597,11 +597,6 @@ export async function signInWithGoogle(redirectTo?: string) {
     provider: "google",
     options: {
       redirectTo: finalRedirectTo,
-      scopes: "https://www.googleapis.com/auth/calendar.events",
-      queryParams: {
-        access_type: "offline",
-        prompt: "consent",
-      },
     },
   })
 

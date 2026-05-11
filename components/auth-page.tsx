@@ -90,14 +90,14 @@ export function AuthPage({ onLogin }: AuthPageProps) {
           <div className="mb-6">
             <h1 className="text-xl font-semibold text-foreground mb-1">Welcome to DailyBrick</h1>
             <p className="text-sm text-muted-foreground">
-              Sign in with Google for calendar sync, or use email/password with in-app reminders.
+              Sign in with Google or use email/password to continue.
             </p>
           </div>
 
           <div className="flex flex-col gap-4">
             <div className="rounded-xl border border-primary/25 bg-primary/10 px-3 py-2">
               <p className="text-[11px] leading-relaxed text-primary">
-                Google login: automatic Google Calendar sync. Email login: in-app and browser reminders only.
+                Google sign-in and email login are both supported.
               </p>
             </div>
 

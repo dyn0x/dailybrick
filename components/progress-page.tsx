@@ -1,74 +1,109 @@
 "use client"
 
+import { useMemo } from "react"
 import { BarChart3 } from "lucide-react"
-import type { TopicProgress } from "@/lib/types"
-
-const colorClasses = [
-  { bar: "bg-primary", text: "text-primary" },
-  { bar: "bg-chart-2", text: "text-chart-2" },
-  { bar: "bg-chart-3", text: "text-chart-3" },
-  { bar: "bg-chart-4", text: "text-chart-4" },
-  { bar: "bg-chart-5", text: "text-chart-5" },
-]
+import type { Task } from "@/lib/types"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
 interface ProgressPageProps {
-  topics: TopicProgress[]
+  tasks: Task[]
 }
 
-export function ProgressPage({ topics }: ProgressPageProps) {
+export function ProgressPage({ tasks }: ProgressPageProps) {
+  const chartData = useMemo(() => {
+    // Generate last 30 days
+    const today = new Date()
+    const thirtyDaysData = []
+    
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+      thirtyDaysData.push(date)
+    }
+
+    // Count completed tasks per day
+    const tasksPerDay = thirtyDaysData.map((date) => {
+      const dateStr = date.toISOString().split("T")[0]
+      const completedCount = tasks.filter(
+        (task) => task.status === "completed" && task.dueDate === dateStr
+      ).length
+      
+      return {
+        date: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        tasks: completedCount,
+        fullDate: dateStr,
+      }
+    })
+
+    return tasksPerDay
+  }, [tasks])
+
+  const totalCompleted = tasks.filter((t) => t.status === "completed").length
+  const averagePerDay = chartData.length > 0 ? Math.round(totalCompleted / 30) : 0
+  const maxDay = Math.max(...chartData.map((d) => d.tasks), 0)
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
-          <BarChart3 className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">Progress by Topic</h3>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <p className="text-xs text-muted-foreground mb-2">Total Completed</p>
+          <p className="text-3xl font-bold text-primary">{totalCompleted}</p>
         </div>
-        <div className="p-5 flex flex-col gap-5">
-          {topics.length === 0 && <p className="text-sm text-muted-foreground">No topic data yet.</p>}
-          {topics.map((topic, idx) => {
-            const pct = Math.round((topic.completed / topic.total) * 100)
-            const { bar, text } = colorClasses[idx % colorClasses.length]
-            return (
-              <div key={topic.id} className="flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">{topic.name}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground">
-                      {topic.completed}/{topic.total} tasks
-                    </span>
-                    <span className={`text-sm font-bold ${text}`}>{pct}%</span>
-                  </div>
-                </div>
-                <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${bar} rounded-full transition-all duration-700`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <p className="text-xs text-muted-foreground mb-2">Avg per Day</p>
+          <p className="text-3xl font-bold text-primary">{averagePerDay}</p>
+        </div>
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <p className="text-xs text-muted-foreground mb-2">Best Day</p>
+          <p className="text-3xl font-bold text-primary">{maxDay}</p>
         </div>
       </div>
 
-      {/* Summary grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {topics.map((topic, idx) => {
-          const pct = Math.round((topic.completed / topic.total) * 100)
-          const { text } = colorClasses[idx % colorClasses.length]
-          return (
-            <div
-              key={topic.id}
-              className="bg-card border border-border rounded-2xl p-4 hover:border-primary/30 transition-colors"
-            >
-              <p className="text-xs text-muted-foreground mb-1">{topic.name}</p>
-              <p className={`text-2xl font-bold ${text} mb-1`}>{pct}%</p>
-              <p className="text-xs text-muted-foreground">
-                {topic.completed} of {topic.total} completed
-              </p>
-            </div>
-          )
-        })}
+      {/* Chart */}
+      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
+          <BarChart3 className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-semibold text-foreground">Tasks Completed - Last 30 Days</h3>
+        </div>
+        <div className="p-5">
+          {chartData.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No task data yet.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  domain={[0, Math.ceil(maxDay * 1.2) || 1]}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    padding: "8px",
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                  formatter={(value) => [value, "Tasks"]}
+                />
+                <Bar
+                  dataKey="tasks"
+                  fill="hsl(var(--primary))"
+                  radius={[8, 8, 0, 0]}
+                  animationDuration={500}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </div>
     </div>
   )

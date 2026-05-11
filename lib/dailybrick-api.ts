@@ -17,7 +17,6 @@ interface DbTask {
   user_id: string
   task_scope: TaskScope
   shared_task_key: string | null
-  calendar_event_id: string | null
   title: string
   topic: string | null
   due_date: string
@@ -65,9 +64,8 @@ interface DbJournalNote {
 }
 
 const DB_TASK_SELECT =
-  "id,user_id,task_scope,shared_task_key,calendar_event_id,title,topic,due_date,reminder_time,status,carried_forward,team_id"
+  "id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id"
 const DB_JOURNAL_SELECT = "id,user_id,title,content_html,font_style,created_at,updated_at"
-const GOOGLE_PROVIDER_TOKEN_STORAGE_KEY = "dailybrick_google_provider_token"
 
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -153,7 +151,6 @@ function mapTask(task: DbTask): Task {
     ownerId: task.user_id,
     taskScope: task.task_scope,
     sharedTaskKey: task.shared_task_key ?? undefined,
-    calendarEventId: task.calendar_event_id ?? undefined,
     teamId: task.team_id,
     title: task.title,
     topic: task.topic ?? undefined,
@@ -177,156 +174,7 @@ function mapJournalNote(note: DbJournalNote): JournalNote {
   }
 }
 
-function getTaskDateTimeWindow(dueDate: string, reminderTime: string | null) {
-  const fallback = "09:00:00"
-  const clock = reminderTime ?? fallback
-  const start = new Date(`${dueDate}T${clock}`)
-  if (Number.isNaN(start.getTime())) {
-    throw new Error(`Invalid task date/time for calendar sync: ${dueDate} ${clock}`)
-  }
-
-  const end = new Date(start)
-  end.setMinutes(end.getMinutes() + 30)
-
-  return {
-    startDateTime: start.toISOString(),
-    endDateTime: end.toISOString(),
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-  }
-}
-
-function getCachedGoogleProviderToken(): string | null {
-  if (typeof window === "undefined") return null
-  return window.localStorage.getItem(GOOGLE_PROVIDER_TOKEN_STORAGE_KEY)
-}
-
-function setCachedGoogleProviderToken(token: string) {
-  if (typeof window === "undefined") return
-  window.localStorage.setItem(GOOGLE_PROVIDER_TOKEN_STORAGE_KEY, token)
-}
-
-function clearCachedGoogleProviderToken() {
-  if (typeof window === "undefined") return
-  window.localStorage.removeItem(GOOGLE_PROVIDER_TOKEN_STORAGE_KEY)
-}
-
-async function googleCalendarRequest(token: string, url: string, init: RequestInit): Promise<Response> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
-    },
-  })
-
-  if (!response.ok) {
-    const details = await response.text().catch(() => "")
-    throw new Error(`Google Calendar API ${response.status}: ${details}`)
-  }
-
-  return response
-}
-
-async function getGoogleProviderToken(): Promise<string | null> {
-  const { data, error } = await supabase.auth.getSession()
-  if (error) throw error
-
-  const sessionToken = data.session?.provider_token ?? null
-  if (sessionToken) {
-    setCachedGoogleProviderToken(sessionToken)
-    return sessionToken
-  }
-
-  return getCachedGoogleProviderToken()
-}
-
-async function syncTaskWithGoogleCalendar(task: DbTask) {
-  const token = await getGoogleProviderToken()
-  if (!token) return
-
-  if (task.status === "completed") {
-    if (!task.calendar_event_id) return
-
-    try {
-      await googleCalendarRequest(
-        token,
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(task.calendar_event_id)}`,
-        { method: "DELETE" }
-      )
-    } catch (err) {
-      const message = err instanceof Error ? err.message : ""
-      if (!message.includes("404")) {
-        throw err
-      }
-    }
-
-    await supabase.from("tasks").update({ calendar_event_id: null }).eq("id", task.id)
-    return
-  }
-
-  const { startDateTime, endDateTime, timeZone } = getTaskDateTimeWindow(task.due_date, task.reminder_time)
-
-  const payload = {
-    summary: task.title,
-    description: `DailyBrick task${task.topic ? ` | Topic: ${task.topic}` : ""}${
-      task.task_scope === "team" ? " | Team task" : ""
-    }`,
-    start: { dateTime: startDateTime, timeZone },
-    end: { dateTime: endDateTime, timeZone },
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: "popup", minutes: 0 },
-        { method: "email", minutes: 10 },
-      ],
-    },
-  }
-
-  if (task.calendar_event_id) {
-    await googleCalendarRequest(
-      token,
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(task.calendar_event_id)}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      }
-    )
-    return
-  }
-
-  const response = await googleCalendarRequest(token, "https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  })
-
-  const created = (await response.json()) as { id?: string }
-  if (!created.id) return
-
-  await supabase.from("tasks").update({ calendar_event_id: created.id }).eq("id", task.id)
-}
-
-async function syncMyTaskRowsWithGoogleCalendar(rows: DbTask[]) {
-  if (rows.length === 0) return
-  for (const row of rows) {
-    try {
-      if (row.status === "completed" && row.calendar_event_id) {
-        await syncTaskWithGoogleCalendar(row)
-      }
-      if (row.status === "pending") {
-        await syncTaskWithGoogleCalendar(row)
-      }
-    } catch (err) {
-      // Calendar sync is best-effort and must not break task operations.
-      console.warn("Calendar sync skipped for task", row.id, err)
-    }
-  }
-}
+// Calendar sync removed: Google Calendar integration deleted per request.
 
 async function ensureProfile(user: User): Promise<UserProfile> {
   const defaultName = user.user_metadata?.full_name ?? user.email?.split("@")[0] ?? "DailyBrick User"
@@ -608,7 +456,6 @@ export async function signOut() {
   assertSupabaseConfigured()
   const { error } = await supabase.auth.signOut()
   if (error) throw error
-  clearCachedGoogleProviderToken()
 }
 
 export async function requestPasswordReset(email: string, redirectTo: string) {
@@ -723,7 +570,6 @@ export async function loadAppSnapshot(user: User): Promise<AppSnapshot> {
   }
 
   const myTasksRaw = tasksByUser.get(user.id) ?? []
-  await syncMyTaskRowsWithGoogleCalendar(myTasksRaw)
   const tasks = myTasksRaw.filter((task) => !task.carried_forward).map(mapTask)
   const carriedTasks = myTasksRaw.filter((task) => task.carried_forward).map(mapTask)
 

@@ -245,30 +245,7 @@
     color: hsl(var(--muted-foreground));
   }
 
-  .loader {
-    border: 2px solid var(--primary-foreground);
-    width: 48px;
-    height: 48px;
-    background: var(--primary);
-    border-radius: 50%;
-    display: inline-block;
-    position: relative;
-    box-sizing: border-box;
-    animation: rotation 2s linear infinite;
-    box-shadow: 0 10px 20px color-mix(in oklab, var(--primary), black 78%);
-  }
-
-  .loader::after {
-    content: '';
-    box-sizing: border-box;
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    border: 24px solid;
-    border-color: transparent var(--primary-foreground);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-  }
+  /* loader removed — visual loader (Ben 10) deleted per request */
 }
 
 @keyframes page-fade-slide {

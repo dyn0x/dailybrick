@@ -32,7 +32,6 @@ create table if not exists public.tasks (
   team_id uuid references public.teams(id) on delete set null,
   task_scope text not null default 'individual' check (task_scope in ('individual', 'team')),
   shared_task_key uuid,
-  calendar_event_id text,
   title text not null,
   topic text,
   due_date date not null default current_date,
@@ -70,7 +69,6 @@ alter table public.journal_notes add column if not exists team_id uuid reference
 
 alter table public.tasks add column if not exists task_scope text not null default 'individual';
 alter table public.tasks add column if not exists shared_task_key uuid;
-alter table public.tasks add column if not exists calendar_event_id text;
 
 do $$
 begin

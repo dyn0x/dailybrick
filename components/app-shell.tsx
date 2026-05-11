@@ -11,7 +11,6 @@ import { ProgressPage } from "@/components/progress-page";
 import { SettingsPage } from "@/components/settings-page";
 import { ToastContainer, useToasts } from "@/components/toast-notifications";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import {
   getCurrentUser,
   getDueReminderTasks,
@@ -395,19 +394,11 @@ export function AppShell() {
   }, [isBooting, router, user]);
 
   if (isBooting) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Spinner />
-      </div>
-    );
+    return <div className="min-h-screen bg-background" />;
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Spinner />
-      </div>
-    );
+    return <div className="min-h-screen bg-background" />;
   }
 
   return (

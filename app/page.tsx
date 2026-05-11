@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import type { User } from "@supabase/supabase-js"
 import { AppShell } from "@/components/app-shell"
 import { LandingPage } from "@/components/landing-page"
-import { Spinner } from "@/components/ui/spinner"
 import { getCurrentUser, onAuthStateChange } from "@/lib/dailybrick-api"
 
 export default function Home() {
@@ -39,11 +38,7 @@ export default function Home() {
   }, [])
 
   if (isBooting) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Spinner />
-      </div>
-    )
+    return <div className="min-h-screen bg-background" />
   }
 
   if (!user) {

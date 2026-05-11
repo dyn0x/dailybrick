@@ -88,12 +88,14 @@ export function TeamPage({ user, teamId, teamCode, teamOwnerId, teamMembers, ref
       return
     }
 
+    const redirectTo = process.env.NEXT_PUBLIC_SITE_URL?.trim() || window.location.origin
+
     try {
       setBusy(true)
       const result = await inviteTeamMember({
         teamId,
         email: inviteEmail,
-        redirectTo: window.location.origin,
+        redirectTo,
       })
       setInviteSent(true)
       if (result.emailSent) {

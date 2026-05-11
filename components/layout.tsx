@@ -1,8 +1,7 @@
 "use client"
 
-import { Box, LayoutDashboard, Users, Settings, ChevronDown, Bell, LogOut, Sun, Moon, Monitor, BarChart2, BookText } from "lucide-react"
+import { Box, LayoutDashboard, Users, Settings, Bell, LogOut, Moon, BarChart2, BookText } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
-import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import type { ToastMessage } from "@/components/toast-notifications"
 
@@ -31,64 +30,6 @@ const bottomNavItems: { id: Page; label: string; icon: React.ElementType }[] = [
   { id: "progress", label: "Progress", icon: BarChart2 },
   { id: "settings", label: "Settings", icon: Settings },
 ]
-
-type ThemeOption = "light" | "dark" | "system"
-
-const themeOptions: { value: ThemeOption; label: string; icon: React.ElementType }[] = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
-]
-
-function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
-
-  const current = themeOptions.find((o) => o.value === theme) ?? themeOptions[2]
-  const CurrentIcon = current.icon
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 h-8 px-2.5 rounded-xl bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors text-xs font-medium"
-        aria-label="Toggle theme"
-      >
-        <CurrentIcon className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">{current.label}</span>
-        <ChevronDown className="w-3 h-3 hidden sm:block" />
-      </button>
-
-      {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-36 bg-popover border border-border rounded-xl shadow-lg py-1 z-50">
-          {themeOptions.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              onClick={() => { setTheme(value); setOpen(false) }}
-              className={cn(
-                "w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-secondary/60",
-                theme === value ? "text-primary font-medium" : "text-foreground"
-              )}
-            >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              {label}
-              {theme === value && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 export function Sidebar({ activePage, onNavigate, onProfileClick, onLogout, userName, userEmail }: NavbarProps) {
   return (
@@ -181,7 +122,6 @@ export function Topbar({ title, onProfileClick, userName, notifications, onClear
       </div>
 
       <div className="flex items-center gap-2">
-        <ThemeToggle />
         <div className="relative" ref={notificationsRef}>
           <button
             onClick={() => setOpenNotifications((prev) => !prev)}

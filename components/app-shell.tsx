@@ -9,6 +9,7 @@ import { JournalPage } from "@/components/journal-page";
 import { TeamPage } from "@/components/team-page";
 import { ProgressPage } from "@/components/progress-page";
 import { SettingsPage } from "@/components/settings-page";
+import { MeetPage } from "@/components/meet-page";
 import { ToastContainer, useToasts } from "@/components/toast-notifications";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,7 +29,7 @@ import type {
 } from "@/lib/types";
 import type { AppSnapshot } from "@/lib/types";
 
-type Page = "dashboard" | "team" | "settings" | "progress" | "journal";
+type Page = "dashboard" | "team" | "settings" | "progress" | "journal" | "meet";
 
 const pageTitles: Record<Page, string> = {
   dashboard: "Dashboard",
@@ -36,6 +37,7 @@ const pageTitles: Record<Page, string> = {
   settings: "Settings",
   progress: "Progress",
   journal: "Journal",
+  meet: "Meet",
 };
 
 const pagePaths: Record<Page, string> = {
@@ -44,6 +46,7 @@ const pagePaths: Record<Page, string> = {
   settings: "/settings",
   progress: "/progress",
   journal: "/journal",
+  meet: "/meet",
 };
 
 function pathToPage(pathname: string): Page {
@@ -51,6 +54,7 @@ function pathToPage(pathname: string): Page {
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/progress")) return "progress";
   if (pathname.startsWith("/journal")) return "journal";
+  if (pathname.startsWith("/meet")) return "meet";
   return "dashboard";
 }
 
@@ -167,6 +171,7 @@ function PageSkeleton({ page }: { page: Page }) {
   if (page === "progress") return <ProgressSkeleton />;
   if (page === "settings") return <SettingsSkeleton />;
   if (page === "journal") return <JournalSkeleton />;
+  if (page === "meet") return <DashboardSkeleton />;
   return <DashboardSkeleton />;
 }
 
@@ -428,6 +433,7 @@ export function AppShell() {
                 {activePage === "team" && (
                   <TeamPage
                     user={user}
+                    userName={userDisplayName}
                     teamId={teamId}
                     teamCode={teamCode}
                     teamOwnerId={teamOwnerId}
@@ -455,6 +461,9 @@ export function AppShell() {
                     refreshAll={refreshAll}
                     showNotification={showNotification}
                   />
+                )}
+                {activePage === "meet" && (
+                  <MeetPage userName={userDisplayName} teamCode={teamCode} />
                 )}
               </>
             )}

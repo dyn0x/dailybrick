@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Sora, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import '@livekit/components-styles'
 import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 

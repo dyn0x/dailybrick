@@ -1,13 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { Copy, Check, UserPlus, Users, Mail, Lock, LogOut, Trash2, Link } from "lucide-react"
+import { Copy, Check, UserPlus, Users, Mail, Lock, LogOut, Trash2, Link, Video } from "lucide-react"
 import { createTeam, deleteTeam, inviteTeamMember, joinTeamByCode, leaveTeam } from "@/lib/dailybrick-api"
 import type { Task, TeamMember } from "@/lib/types"
 import type { User } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { TeamRoom } from "@/components/TeamRoom"
 
 function TaskRowReadOnly({ task }: { task: Task }) {
   return (
@@ -41,6 +42,7 @@ function TaskRowReadOnly({ task }: { task: Task }) {
 
 interface TeamPageProps {
   user: User
+  userName: string
   teamId: string | null
   teamCode: string | null
   teamOwnerId: string | null
@@ -49,13 +51,14 @@ interface TeamPageProps {
   showNotification: (msg: string) => void
 }
 
-export function TeamPage({ user, teamId, teamCode, teamOwnerId, teamMembers, refreshAll, showNotification }: TeamPageProps) {
+export function TeamPage({ user, userName, teamId, teamCode, teamOwnerId, teamMembers, refreshAll, showNotification }: TeamPageProps) {
   const [copied, setCopied] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [joinCode, setJoinCode] = useState("")
   const [inviteSent, setInviteSent] = useState(false)
   const [expandedMember, setExpandedMember] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [isRoomOpen, setIsRoomOpen] = useState(false)
 
   const isOwner = teamOwnerId === user.id
 
@@ -258,21 +261,36 @@ export function TeamPage({ user, teamId, teamCode, teamOwnerId, teamMembers, ref
             <div className="flex-1 px-4 py-2.5 rounded-xl bg-secondary font-mono text-sm tracking-widest text-foreground border border-border">
               {teamCode ?? "Not created yet"}
             </div>
-            <button
-              onClick={copyCode}
-              disabled={!teamCode}
-              aria-label="Copy team code"
-              className={cn(
-                "h-10 px-3 rounded-xl flex items-center gap-2 text-sm font-medium transition-all duration-150",
-                copied
-                  ? "bg-primary/20 text-primary"
-                  : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80",
-                !teamCode && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copied ? "Copied!" : "Copy"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={copyCode}
+                disabled={!teamCode}
+                aria-label="Copy team code"
+                className={cn(
+                  "h-10 px-3 rounded-xl flex items-center gap-2 text-sm font-medium transition-all duration-150",
+                  copied
+                    ? "bg-primary/20 text-primary"
+                    : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80",
+                  !teamCode && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+
+              <button
+                onClick={() => setIsRoomOpen(true)}
+                disabled={!teamCode}
+                aria-label="Join team room"
+                className={cn(
+                  "h-10 px-3 rounded-xl flex items-center gap-2 text-sm font-medium transition-all duration-150 bg-primary text-primary-foreground hover:bg-primary/90",
+                  !teamCode && "opacity-50 cursor-not-allowed"
+                )}
+              >
+                <Video className="w-4 h-4" />
+                Join Room
+              </button>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground">Share this code with teammates to join your team (max 2 members).</p>
         </div>
@@ -375,6 +393,13 @@ export function TeamPage({ user, teamId, teamCode, teamOwnerId, teamMembers, ref
           ))}
         </div>
       </div>
+
+      <TeamRoom
+        open={isRoomOpen}
+        onClose={() => setIsRoomOpen(false)}
+        userName={userName}
+        teamCode={teamCode}
+      />
     </div>
   )
 }

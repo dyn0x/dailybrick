@@ -10,6 +10,7 @@ import { TeamPage } from "@/components/team-page";
 import { ProgressPage } from "@/components/progress-page";
 import { SettingsPage } from "@/components/settings-page";
 import { MeetPage } from "@/components/meet-page";
+import { MeetOngoing } from "@/components/meet-ongoing";
 import { ToastContainer, useToasts } from "@/components/toast-notifications";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -463,7 +464,11 @@ export function AppShell() {
                   />
                 )}
                 {activePage === "meet" && (
-                  <MeetPage userName={userDisplayName} teamCode={teamCode} />
+                  pathname.startsWith("/meet/ongoing") ? (
+                    <MeetOngoing />
+                  ) : (
+                    <MeetPage userName={userDisplayName} teamCode={teamCode} />
+                  )
                 )}
               </>
             )}

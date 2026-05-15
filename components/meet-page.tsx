@@ -2,7 +2,20 @@
 
 import { useEffect, useState } from "react"
 import { Loader2, LogOut } from "lucide-react"
-import { LiveKitRoom, RoomAudioRenderer, VideoConference } from "@livekit/components-react"
+import {
+  GridLayout,
+  LiveKitRoom,
+  ParticipantTile,
+  VideoTrack,
+  RoomAudioRenderer,
+  ControlBar,
+  TrackRefContext,
+  useTracks,
+  LayoutContextProvider,
+  useCreateLayoutContext,
+} from "@livekit/components-react"
+import { isTrackReference } from "@livekit/components-core"
+import { Track, RoomEvent } from "livekit-client"
 import { Button } from "@/components/ui/button"
 import { PreJoinScreen } from "@/components/meet-prejoin"
 
@@ -16,6 +29,71 @@ type TokenResponse = {
   token?: string
   roomName?: string
   error?: string
+}
+
+function MeetingStage() {
+  const layoutContext = useCreateLayoutContext()
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    {
+      onlySubscribed: false,
+      updateOnlyOn: [RoomEvent.ActiveSpeakersChanged],
+    },
+  )
+
+  // Custom participant tile ensures consistent placeholder sizing when camera is off
+  function ParticipantTileWrapper({ trackRef }: { trackRef: any }) {
+    // If it's a real track reference with a video publication and not muted, render VideoTrack
+    const showVideo = isTrackReference(trackRef) && trackRef.publication && trackRef.publication.kind === 'video' && !trackRef.publication.isMuted
+
+    return (
+      <div className="meet-tile h-full w-full overflow-hidden rounded-[24px] border border-white/8 bg-black/80 shadow-[0_8px_24px_rgba(0,0,0,0.3)] flex items-stretch">
+        {showVideo ? (
+          <VideoTrack trackRef={trackRef} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-black text-white">
+            <div className="flex flex-col items-center justify-center gap-3 w-full h-full">
+              <div className="w-56 h-56 md:w-72 md:h-72 rounded-full bg-neutral-600/80" />
+              <div className="absolute left-4 bottom-4 px-3 py-1.5 rounded-lg bg-black/60">
+                <p className="text-sm text-white">Manas</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <LayoutContextProvider value={layoutContext} onWidgetChange={() => {}}>
+      <div className="flex h-full min-h-0 flex-col bg-[#121212] text-white">
+        <div className="flex-1 min-h-0 p-4 md:p-5">
+          <div className="meet-stage-shell h-full overflow-hidden rounded-[28px] border border-white/8 bg-[radial-gradient(circle_at_top,_rgba(74,144,226,0.16),_transparent_42%),linear-gradient(180deg,_rgba(255,255,255,0.04),_rgba(255,255,255,0.01))] shadow-[0_24px_90px_rgba(0,0,0,0.35)]">
+            <GridLayout tracks={tracks} className="meet-grid h-full w-full p-3 md:p-4">
+              <TrackRefContext.Consumer>
+                {(trackRef) => trackRef && <ParticipantTileWrapper trackRef={trackRef} />}
+              </TrackRefContext.Consumer>
+            </GridLayout>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center px-4 pb-5 pt-2 md:pb-6">
+          <div className="meet-control-dock flex flex-wrap items-center justify-center gap-2 rounded-full border border-white/10 bg-[#1a1a1a]/95 px-3 py-2 shadow-[0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+            <ControlBar
+              variation="minimal"
+              controls={{ microphone: true, camera: true, screenShare: true, chat: true, leave: true, settings: false }}
+              className="meet-control-bar"
+            />
+          </div>
+        </div>
+
+        <RoomAudioRenderer />
+      </div>
+    </LayoutContextProvider>
+  )
 }
 
 export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
@@ -84,7 +162,7 @@ export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
       <PreJoinScreen
         userName={userName}
         onJoin={handleJoinClick}
-        isLoading={stage === "connecting"}
+        isLoading={false}
       />
     )
   }
@@ -151,8 +229,7 @@ export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
       }}
       className="w-full h-[calc(100vh-64px)] md:h-[calc(100vh-64px)]"
     >
-      <VideoConference />
-      <RoomAudioRenderer />
+      <MeetingStage />
     </LiveKitRoom>
   )
 }

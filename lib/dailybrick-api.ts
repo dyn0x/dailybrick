@@ -732,12 +732,12 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
     payload.reminder_sent_at = null
   }
 
-  const query = supabase.from("tasks").update(payload)
+  let query = supabase.from("tasks").update(payload)
 
   if (task.taskScope === "team" && task.sharedTaskKey) {
-    query.eq("shared_task_key", task.sharedTaskKey)
+    query = query.eq("shared_task_key", task.sharedTaskKey)
   } else {
-    query.eq("id", task.id)
+    query = query.eq("id", task.id)
   }
 
   const { data, error } = await query
@@ -790,7 +790,7 @@ export async function updateTask(params: {
   const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
   if (sourceError) throw sourceError
 
-  const query = supabase
+  let query = supabase
     .from("tasks")
     .update({
       title,
@@ -800,9 +800,9 @@ export async function updateTask(params: {
     })
 
   if (params.task.taskScope === "team" && params.task.sharedTaskKey) {
-    query.eq("shared_task_key", params.task.sharedTaskKey)
+    query = query.eq("shared_task_key", params.task.sharedTaskKey)
   } else {
-    query.eq("id", params.task.id)
+    query = query.eq("id", params.task.id)
   }
 
   const { data: updatedRows, error: updateError } = await query
@@ -857,12 +857,12 @@ export async function deleteTask(task: Pick<Task, "id" | "taskScope" | "sharedTa
   const { data: sourceRows, error: sourceError } = await sourceRowsQuery.returns<DbTask[]>()
   if (sourceError) throw sourceError
 
-  const query = supabase.from("tasks").delete()
+  let query = supabase.from("tasks").delete()
 
   if (task.taskScope === "team" && task.sharedTaskKey) {
-    query.eq("shared_task_key", task.sharedTaskKey)
+    query = query.eq("shared_task_key", task.sharedTaskKey)
   } else {
-    query.eq("id", task.id)
+    query = query.eq("id", task.id)
   }
 
   const { error } = await query

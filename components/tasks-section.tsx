@@ -7,6 +7,7 @@ import { createTask, deleteTask, toggleTaskStatus, updateTask } from "@/lib/dail
 import type { Task, TaskScope } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
 const PREDEFINED_TOPICS = [
@@ -225,6 +226,7 @@ export function TasksSection({
   const [newTime, setNewTime] = useState("09:00")
   const [newTopic, setNewTopic] = useState("Others")
   const [taskScope, setTaskScope] = useState<TaskScope>("individual")
+  const [isLikeOn, setIsLikeOn] = useState<boolean>(true)
   const [showTopicDropdown, setShowTopicDropdown] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 })
@@ -344,10 +346,11 @@ export function TasksSection({
     if (!newTitle.trim()) return
     try {
       setSaving(true)
+      const scopeToUse: TaskScope = isLikeOn && teamId ? "team" : "individual"
       const task = await createTask({
         userId,
         teamId,
-        taskScope,
+        taskScope: scopeToUse,
         title: newTitle.trim(),
         topic: newTopic || undefined,
         reminderTime: newTime,
@@ -359,6 +362,7 @@ export function TasksSection({
       setNewTime("09:00")
       setNewTopic("Others")
       setTaskScope("individual")
+      setIsLikeOn(true)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create task"
       showNotification?.(message)
@@ -429,34 +433,19 @@ export function TasksSection({
 
         {/* Add task — title full-width on mobile, all inline on sm+ */}
         <div className="px-4 pb-4 pt-3 border-t border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <button
-              onClick={() => setTaskScope("individual")}
-              className={cn(
-                "h-8 px-3 rounded-lg text-xs font-medium border transition-colors",
-                taskScope === "individual"
-                  ? "bg-primary/15 text-primary border-primary/30"
-                  : "bg-secondary text-muted-foreground border-border hover:text-primary hover:bg-primary/10 hover:border-primary/35"
-              )}
-            >
-              Individual task
-            </button>
-            <button
-              onClick={() => setTaskScope("team")}
-              disabled={!teamId}
-              className={cn(
-                "h-8 px-3 rounded-lg text-xs font-medium border transition-colors",
-                taskScope === "team"
-                  ? "bg-chart-2/20 text-chart-2 border-chart-2/40"
-                  : "bg-secondary text-muted-foreground border-border hover:text-primary hover:bg-primary/10 hover:border-primary/35",
-                !teamId && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              Team task
-            </button>
-            {taskScope === "team" && (
-              <p className="text-[11px] text-muted-foreground">Shared completion and delete for all team members</p>
-            )}
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={isLikeOn}
+                onCheckedChange={(v) => setIsLikeOn(Boolean(v))}
+                aria-label="Turn on like button"
+              />
+              <div className="flex flex-col">
+                <span className="text-xs font-medium">
+                  {isLikeOn && teamId ? "Task synced with your team" : "Task only for you"}
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

@@ -160,6 +160,11 @@ function TaskRow({ task, onToggle, onDelete, onEdit, disabled }: TaskRowProps) {
               {task.topic}
             </span>
           )}
+          {task.recurringDaily && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-medium">
+              Daily
+            </span>
+          )}
           {task.taskScope === "team" && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-chart-2/20 text-chart-2 font-semibold uppercase tracking-wide">
               Team

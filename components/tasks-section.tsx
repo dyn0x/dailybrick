@@ -8,7 +8,7 @@ import type { Task, TaskScope } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { cn } from "@/lib/utils"
+import { cn, getErrorMessage } from "@/lib/utils"
 
 const PREDEFINED_TOPICS = [
   "Math",
@@ -277,7 +277,7 @@ export function TasksSection({
       }
       await refreshAll()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not update task"
+      const message = getErrorMessage(err, "Could not update task")
       showNotification?.(message)
     } finally {
       setSaving(false)
@@ -306,7 +306,7 @@ export function TasksSection({
       }
       await refreshAll()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not delete task"
+      const message = getErrorMessage(err, "Could not delete task")
       showNotification?.(message)
     } finally {
       setSaving(false)
@@ -336,7 +336,7 @@ export function TasksSection({
       await refreshAll()
       showNotification?.("Task updated")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not update task"
+      const message = getErrorMessage(err, "Could not update task")
       showNotification?.(message)
     } finally {
       setSaving(false)
@@ -372,7 +372,7 @@ export function TasksSection({
       setIsLikeOn(true)
       setIsRecurring(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not create task"
+      const message = getErrorMessage(err, "Could not create task")
       showNotification?.(message)
     } finally {
       setSaving(false)

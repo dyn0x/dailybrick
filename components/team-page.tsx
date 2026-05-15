@@ -7,7 +7,7 @@ import type { Task, TeamMember } from "@/lib/types"
 import type { User } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
+import { cn, getErrorMessage } from "@/lib/utils"
 import { TeamRoom } from "@/components/TeamRoom"
 
 function TaskRowReadOnly({ task }: { task: Task }) {
@@ -77,7 +77,7 @@ export function TeamPage({ user, userName, teamId, teamCode, teamOwnerId, teamMe
       await refreshAll()
       showNotification("Team created successfully.")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not create team"
+      const message = getErrorMessage(err, "Could not create team")
       showNotification(message)
     } finally {
       setBusy(false)
@@ -112,7 +112,7 @@ export function TeamPage({ user, userName, teamId, teamCode, teamOwnerId, teamMe
         setInviteEmail("")
       }, 1200)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not invite member"
+      const message = getErrorMessage(err, "Could not invite member")
       showNotification(message)
     } finally {
       setBusy(false)
@@ -133,7 +133,7 @@ export function TeamPage({ user, userName, teamId, teamCode, teamOwnerId, teamMe
       await refreshAll()
       showNotification("Joined team successfully.")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not join team"
+      const message = getErrorMessage(err, "Could not join team")
       showNotification(message)
     } finally {
       setBusy(false)
@@ -148,7 +148,7 @@ export function TeamPage({ user, userName, teamId, teamCode, teamOwnerId, teamMe
       await refreshAll()
       showNotification("You left the team.")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not leave team"
+      const message = getErrorMessage(err, "Could not leave team")
       showNotification(message)
     } finally {
       setBusy(false)
@@ -163,7 +163,7 @@ export function TeamPage({ user, userName, teamId, teamCode, teamOwnerId, teamMe
       await refreshAll()
       showNotification("Team deleted.")
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not delete team"
+      const message = getErrorMessage(err, "Could not delete team")
       showNotification(message)
     } finally {
       setBusy(false)

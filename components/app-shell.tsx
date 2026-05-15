@@ -28,6 +28,7 @@ import type {
   UserProfile,
 } from "@/lib/types";
 import type { AppSnapshot } from "@/lib/types";
+import { getErrorMessage } from "@/lib/utils";
 
 type Page = "dashboard" | "team" | "settings" | "progress" | "journal" | "meet";
 
@@ -239,8 +240,7 @@ export function AppShell() {
         appSnapshotCache = { userId: user.id, snapshot };
         lastLoadErrorRef.current = null;
       } catch (err) {
-        const originalMessage =
-          err instanceof Error ? err.message : "Could not load app data";
+        const originalMessage = getErrorMessage(err, "Could not load app data");
         const mappedMessage = /404|relation|profiles|tasks|not found/i.test(
           originalMessage,
         )
@@ -275,7 +275,7 @@ export function AppShell() {
       appSnapshotCache = null;
       router.push("/");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not sign out";
+      const message = getErrorMessage(err, "Could not sign out");
       showNotification(message);
     }
   }, [router, showNotification]);

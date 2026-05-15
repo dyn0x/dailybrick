@@ -10,14 +10,17 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 const PREDEFINED_TOPICS = [
-  "DSA",
   "Math",
-  "Machine Learning",
-  "Python",
-  "Py Libraries",
-  "Hackathon",
-  "Projects",
+  "AIML",
+  "Language",
+  "Library",
   "Tool",
+  "Skill",
+  "Project",
+  "Hackathon",
+  "Extra",
+  "Timepass",
+  "Others",
 ]
 
 interface TaskRowProps {
@@ -220,11 +223,9 @@ export function TasksSection({
 }: TasksSectionProps) {
   const [newTitle, setNewTitle] = useState("")
   const [newTime, setNewTime] = useState("09:00")
-  const [newTopic, setNewTopic] = useState("")
-  const [customTopic, setCustomTopic] = useState("")
+  const [newTopic, setNewTopic] = useState("Others")
   const [taskScope, setTaskScope] = useState<TaskScope>("individual")
   const [showTopicDropdown, setShowTopicDropdown] = useState(false)
-  const [showCustomInput, setShowCustomInput] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 })
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -247,7 +248,7 @@ export function TasksSection({
   const openDropdown = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
-      const dropdownHeight = PREDEFINED_TOPICS.length * 36 + 44 + (newTopic ? 40 : 0)
+      const dropdownHeight = PREDEFINED_TOPICS.length * 36 + 8
       setDropdownPos({
         top: rect.top + window.scrollY - dropdownHeight - 4,
         left: rect.left + window.scrollX,
@@ -337,21 +338,6 @@ export function TasksSection({
   const selectTopic = (topic: string) => {
     setNewTopic(topic)
     setShowTopicDropdown(false)
-    setShowCustomInput(false)
-    setCustomTopic("")
-  }
-
-  const handleAddCustomTopic = () => {
-    setShowCustomInput(true)
-    setShowTopicDropdown(false)
-  }
-
-  const confirmCustomTopic = () => {
-    if (customTopic.trim()) {
-      setNewTopic(customTopic.trim())
-      setCustomTopic("")
-      setShowCustomInput(false)
-    }
   }
 
   const addTask = async () => {
@@ -371,7 +357,7 @@ export function TasksSection({
       showNotification?.(`Task '${task.title}' scheduled at ${task.time}`)
       setNewTitle("")
       setNewTime("09:00")
-      setNewTopic("")
+      setNewTopic("Others")
       setTaskScope("individual")
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create task"
@@ -489,42 +475,22 @@ export function TasksSection({
             <div className="flex gap-2 items-center">
               {/* Topic */}
               <div className="flex-[3] sm:flex-[1.5]">
-                {showCustomInput ? (
-                  <div className="flex gap-1">
-                    <Input
-                      placeholder="Topic..."
-                      value={customTopic}
-                      onChange={(e) => setCustomTopic(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && void confirmCustomTopic()}
-                      className="h-9 w-full bg-secondary border-border text-foreground placeholder:text-muted-foreground rounded-xl text-sm"
-                      autoFocus
-                    />
-                    <Button
-                      onClick={confirmCustomTopic}
-                      size="sm"
-                      className="h-9 px-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl shrink-0"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                ) : (
-                  <button
-                    ref={triggerRef}
-                    onClick={openDropdown}
-                    className="flex items-center gap-1.5 h-9 w-full px-3 bg-secondary border border-border rounded-xl text-sm text-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/35 transition-colors"
+                <button
+                  ref={triggerRef}
+                  onClick={openDropdown}
+                  className="flex items-center gap-1.5 h-9 w-full px-3 bg-secondary border border-border rounded-xl text-sm text-foreground hover:text-primary hover:bg-primary/10 hover:border-primary/35 transition-colors"
+                >
+                  <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span
+                    className={cn(
+                      "flex-1 text-left truncate text-xs",
+                      !newTopic && "text-muted-foreground"
+                    )}
                   >
-                    <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span
-                      className={cn(
-                        "flex-1 text-left truncate text-xs",
-                        !newTopic && "text-muted-foreground"
-                      )}
-                    >
-                      {newTopic || "Topic"}
-                    </span>
-                    <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
-                  </button>
-                )}
+                    {newTopic || "Topic"}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+                </button>
               </div>
 
               {/* Time */}
@@ -580,25 +546,6 @@ export function TasksSection({
                 {topic}
               </button>
             ))}
-            <div className="border-t border-border my-1" />
-            <button
-              onClick={handleAddCustomTopic}
-              className="w-full px-3 py-2 text-left text-sm text-primary hover:bg-secondary/60 transition-colors flex items-center gap-2"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add other
-            </button>
-            {newTopic && (
-              <>
-                <div className="border-t border-border my-1" />
-                <button
-                  onClick={() => selectTopic("")}
-                  className="w-full px-3 py-2 text-left text-sm text-muted-foreground hover:bg-secondary/60 transition-colors"
-                >
-                  Clear topic
-                </button>
-              </>
-            )}
           </div>,
           document.body
         )}

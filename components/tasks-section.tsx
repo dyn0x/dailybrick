@@ -227,6 +227,7 @@ export function TasksSection({
   const [newTopic, setNewTopic] = useState("Others")
   const [taskScope, setTaskScope] = useState<TaskScope>("individual")
   const [isLikeOn, setIsLikeOn] = useState<boolean>(true)
+  const [isRecurring, setIsRecurring] = useState<boolean>(false)
   const [showTopicDropdown, setShowTopicDropdown] = useState(false)
   const [saving, setSaving] = useState(false)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 })
@@ -351,6 +352,7 @@ export function TasksSection({
         userId,
         teamId,
         taskScope: scopeToUse,
+        recurringDaily: isRecurring,
         title: newTitle.trim(),
         topic: newTopic || undefined,
         reminderTime: newTime,
@@ -363,6 +365,7 @@ export function TasksSection({
       setNewTopic("Others")
       setTaskScope("individual")
       setIsLikeOn(true)
+      setIsRecurring(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not create task"
       showNotification?.(message)
@@ -463,6 +466,14 @@ export function TasksSection({
             {/* Topic + Time + Add */}
             <div className="flex gap-2 items-center">
               {/* Topic */}
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={isRecurring}
+                  onCheckedChange={(v) => setIsRecurring(Boolean(v))}
+                  aria-label="Repeat daily"
+                />
+                <span className="text-xs text-muted-foreground">Repeat daily</span>
+              </div>
               <div className="flex-[3] sm:flex-[1.5]">
                 <button
                   ref={triggerRef}

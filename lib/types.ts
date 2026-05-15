@@ -13,6 +13,7 @@ export interface Task {
   teamId?: string | null
   carriedForward?: boolean
   topic?: string
+  recurringDaily?: boolean
   dueDate?: string
   ownerId?: string
 }

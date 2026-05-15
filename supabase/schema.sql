@@ -69,6 +69,7 @@ alter table public.journal_notes add column if not exists team_id uuid reference
 
 alter table public.tasks add column if not exists task_scope text not null default 'individual';
 alter table public.tasks add column if not exists shared_task_key uuid;
+alter table public.tasks add column if not exists recurring_daily boolean not null default false;
 
 do $$
 begin

@@ -17,6 +17,7 @@ interface DbTask {
   user_id: string
   task_scope: TaskScope
   shared_task_key: string | null
+  recurring_daily: boolean
   title: string
   topic: string | null
   due_date: string
@@ -64,7 +65,7 @@ interface DbJournalNote {
 }
 
 const DB_TASK_SELECT =
-  "id,user_id,task_scope,shared_task_key,title,topic,due_date,reminder_time,status,carried_forward,team_id"
+  "id,user_id,task_scope,shared_task_key,recurring_daily,title,topic,due_date,reminder_time,status,carried_forward,team_id"
 const DB_JOURNAL_SELECT = "id,user_id,title,content_html,font_style,created_at,updated_at"
 
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
@@ -151,6 +152,7 @@ function mapTask(task: DbTask): Task {
     ownerId: task.user_id,
     taskScope: task.task_scope,
     sharedTaskKey: task.shared_task_key ?? undefined,
+    recurringDaily: task.recurring_daily,
     teamId: task.team_id,
     title: task.title,
     topic: task.topic ?? undefined,
@@ -620,6 +622,7 @@ export async function createTask(params: {
   userId: string
   teamId: string | null
   taskScope?: TaskScope
+  recurringDaily?: boolean
   title: string
   topic?: string
   reminderTime?: string
@@ -653,6 +656,7 @@ export async function createTask(params: {
       team_id: params.teamId,
       task_scope: "team" as const,
       shared_task_key: sharedTaskKey,
+      recurring_daily: params.recurringDaily ?? false,
       title: params.title,
       topic: params.topic ?? null,
       reminder_time: params.reminderTime ?? null,
@@ -690,6 +694,7 @@ export async function createTask(params: {
       team_id: params.teamId,
       task_scope: "individual",
       shared_task_key: null,
+      recurring_daily: params.recurringDaily ?? false,
       title: params.title,
       topic: params.topic ?? null,
       reminder_time: params.reminderTime ?? null,
@@ -757,6 +762,89 @@ export async function toggleTaskStatus(task: Pick<Task, "id" | "status" | "taskS
 
   const updatedTask = (data ?? []).find((row) => row.id === task.id) ?? data?.[0]
   if (!updatedTask) throw new Error("Could not update task")
+  // If the task was just completed and is marked recurring, create a copy for the next day
+  if (nextStatus === "completed") {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const year = tomorrow.getFullYear()
+    const month = `${tomorrow.getMonth() + 1}`.padStart(2, "0")
+    const day = `${tomorrow.getDate()}`.padStart(2, "0")
+    const tomorrowDate = `${year}-${month}-${day}`
+
+    for (const row of sourceRows ?? []) {
+      if (!row.recurring_daily) continue
+
+      if (row.task_scope === "team" && row.shared_task_key) {
+        // Create next-day team tasks for all members in the team
+        const { data: members, error: membersError } = await supabase
+          .from("team_members")
+          .select("user_id")
+          .eq("team_id", row.team_id)
+
+        if (membersError) continue
+
+        const memberUserIds = (members ?? [])
+          .map((m: any) => m.user_id as string | null)
+          .filter((id: any): id is string => Boolean(id))
+
+        if (memberUserIds.length === 0) continue
+
+        const newSharedKey = crypto.randomUUID()
+        const payload = memberUserIds.map((memberUserId) => ({
+          user_id: memberUserId,
+          team_id: row.team_id,
+          task_scope: "team" as const,
+          shared_task_key: newSharedKey,
+          recurring_daily: true,
+          title: row.title,
+          topic: row.topic ?? null,
+          reminder_time: row.reminder_time ?? null,
+          due_date: tomorrowDate,
+          status: "pending" as const,
+          carried_forward: false,
+          reminder_sent_at: null,
+        }))
+
+        const { data: inserted, error: insertError } = await supabase
+          .from("tasks")
+          .insert(payload)
+          .select(DB_TASK_SELECT)
+          .returns<DbTask[]>()
+
+        if (!inserted || insertError) continue
+
+        for (const created of inserted) {
+          if (!created.topic) continue
+          await adjustTopicProgress({ userId: created.user_id, topic: created.topic, totalDelta: 1 })
+        }
+      } else {
+        // Individual recurring task: create a single task for the owner for tomorrow
+        const { data: inserted, error: insertError } = await supabase
+          .from("tasks")
+          .insert({
+            user_id: row.user_id,
+            team_id: row.team_id,
+            task_scope: "individual",
+            shared_task_key: null,
+            recurring_daily: true,
+            title: row.title,
+            topic: row.topic ?? null,
+            reminder_time: row.reminder_time ?? null,
+            due_date: tomorrowDate,
+            status: "pending",
+            carried_forward: false,
+            reminder_sent_at: null,
+          })
+          .select(DB_TASK_SELECT)
+          .single<DbTask>()
+
+        if (insertError || !inserted) continue
+        if (inserted.topic) {
+          await adjustTopicProgress({ userId: inserted.user_id, topic: inserted.topic, totalDelta: 1 })
+        }
+      }
+    }
+  }
   return mapTask(updatedTask)
 }
 

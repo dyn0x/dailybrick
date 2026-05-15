@@ -240,16 +240,7 @@ async function carryForwardPendingTasks(userId: string): Promise<void> {
     .lt("due_date", today)
 }
 
-async function cleanupOldCompletedTasks(userId: string): Promise<void> {
-  const today = getTodayLocalDateString()
 
-  await supabase
-    .from("tasks")
-    .delete()
-    .eq("user_id", userId)
-    .eq("status", "completed")
-    .lt("due_date", today)
-}
 
 async function adjustTopicProgress(params: {
   userId: string
@@ -264,29 +255,16 @@ async function adjustTopicProgress(params: {
   const completedDelta = params.completedDelta ?? 0
   if (totalDelta === 0 && completedDelta === 0) return
 
-  const { data: existing, error: fetchError } = await supabase
-    .from("topic_progress")
-    .select("user_id,topic,total_count,completed_count")
-    .eq("user_id", params.userId)
-    .eq("topic", topic)
-    .maybeSingle<DbTopicProgress>()
+  const { error: rpcError } = await supabase.rpc("upsert_topic_progress", {
+    p_user_id: params.userId,
+    p_topic: topic,
+    p_total_delta: totalDelta,
+    p_completed_delta: completedDelta,
+  })
 
-  if (fetchError) throw fetchError
-
-  const nextTotal = Math.max(0, (existing?.total_count ?? 0) + totalDelta)
-  const nextCompleted = Math.max(0, (existing?.completed_count ?? 0) + completedDelta)
-
-  const { error: upsertError } = await supabase.from("topic_progress").upsert(
-    {
-      user_id: params.userId,
-      topic,
-      total_count: nextTotal,
-      completed_count: nextCompleted,
-    },
-    { onConflict: "user_id,topic" }
-  )
-
-  if (upsertError) throw upsertError
+  if (rpcError) {
+    console.warn("Could not update topic progress for user", params.userId, rpcError.message)
+  }
 }
 
 async function getUserTeam(userId: string): Promise<{ team: DbTeam | null; members: DbMember[] }> {
@@ -542,11 +520,27 @@ export function onAuthStateChange(callback: Parameters<typeof supabase.auth.onAu
   return supabase.auth.onAuthStateChange(callback)
 }
 
+async function cleanupPreviousMonthTasks(userId: string): Promise<void> {
+  const today = new Date()
+  if (today.getDate() >= 5) {
+    const firstDayOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+    const dateStr = firstDayOfCurrentMonth.toISOString().split("T")[0]
+    
+    await supabase
+      .from("tasks")
+      .delete()
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .lt("due_date", dateStr)
+  }
+}
+
 export async function loadAppSnapshot(user: User): Promise<AppSnapshot> {
   assertSupabaseConfigured()
   const profile = await ensureProfile(user)
   await claimInvites(user)
-  await cleanupOldCompletedTasks(user.id)
+
+  await cleanupPreviousMonthTasks(user.id)
   await carryForwardPendingTasks(user.id)
 
   const [{ team, members }, topics, doneThisWeek, streak] = await Promise.all([
@@ -583,7 +577,7 @@ export async function loadAppSnapshot(user: User): Promise<AppSnapshot> {
     const completionPercent = total > 0 ? Math.round((completed / total) * 100) : 0
 
     return {
-      id: member.id,
+      id: member.user_id ?? member.id,
       name,
       email,
       avatarInitials: initials(name, email),
@@ -1231,4 +1225,31 @@ export async function deleteJournalNote(noteId: string) {
 
   const { error } = await supabase.from("journal_notes").delete().eq("id", noteId)
   if (error) throw error
+}
+
+export interface ProgressTask {
+  id: string
+  user_id: string
+  topic: string | null
+  due_date: string
+}
+
+export async function getTeamProgressData(userIds: string[]): Promise<ProgressTask[]> {
+  if (userIds.length === 0) return []
+  assertSupabaseConfigured()
+  
+  const today = new Date()
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+  
+  const startStr = firstDayOfMonth.toISOString().split("T")[0]
+  
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, user_id, topic, due_date")
+    .in("user_id", userIds)
+    .eq("status", "completed")
+    .gte("due_date", startStr)
+    
+  if (error) throw error
+  return data ?? []
 }

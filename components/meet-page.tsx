@@ -5,7 +5,6 @@ import { Loader2, LogOut } from "lucide-react"
 import { LiveKitRoom, RoomAudioRenderer, VideoConference } from "@livekit/components-react"
 import { Button } from "@/components/ui/button"
 import { PreJoinScreen } from "@/components/meet-prejoin"
-import { useRouter } from "next/navigation"
 
 interface MeetPageProps {
   userName: string
@@ -20,7 +19,6 @@ type TokenResponse = {
 }
 
 export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
-  const router = useRouter()
   const [stage, setStage] = useState<"prejoin" | "connecting" | "joined">("prejoin")
   const [token, setToken] = useState<string | null>(null)
   const [roomName, setRoomName] = useState<string | null>(null)
@@ -29,6 +27,15 @@ export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
   const [videoEnabled, setVideoEnabled] = useState(true)
 
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL?.trim() ?? ""
+
+  const resetToWaitingRoom = () => {
+    setStage("prejoin")
+    setToken(null)
+    setRoomName(null)
+    setError(null)
+    setAudioEnabled(true)
+    setVideoEnabled(true)
+  }
 
   const handleJoinClick = async (options: { audio: boolean; video: boolean }) => {
     try {
@@ -64,21 +71,7 @@ export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
 
       setToken(data.token)
       setRoomName(data.roomName)
-      // persist token and preferences to sessionStorage so the ongoing route can pick it up
-      try {
-        const payload = JSON.stringify({
-          token: data.token,
-          roomName: data.roomName,
-          audio: options.audio,
-          video: options.video,
-        })
-        sessionStorage.setItem("livekit_session", payload)
-      } catch {}
-
-      // navigate to ongoing view which will consume the token and connect
-      try {
-        router.push("/meet/ongoing")
-      } catch {}
+      setStage("joined")
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Failed to join room"
       setError(errorMsg)
@@ -120,10 +113,7 @@ export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
           </div>
           <Button
             onClick={() => {
-              setError(null)
-              setStage("prejoin")
-              setToken(null)
-              setRoomName(null)
+              resetToWaitingRoom()
             }}
             variant="outline"
             size="sm"
@@ -142,10 +132,27 @@ export function MeetPage({ userName, teamCode, onBack }: MeetPageProps) {
       </div>
     )
   }
-  // we've stored session and navigated to the ongoing route — show a brief redirecting state
+
   return (
-    <div className="w-full h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] flex items-center justify-center bg-background">
-      <p className="text-sm text-muted-foreground">Redirecting to meeting...</p>
-    </div>
+    <LiveKitRoom
+      video={videoEnabled}
+      audio={audioEnabled}
+      token={token}
+      serverUrl={serverUrl}
+      onDisconnected={resetToWaitingRoom}
+      connectOptions={{
+        autoSubscribe: true,
+        maxRetries: 0,
+      }}
+      options={{
+        publishDefaults: {
+          simulcast: false,
+        },
+      }}
+      className="w-full h-[calc(100vh-64px)] md:h-[calc(100vh-64px)]"
+    >
+      <VideoConference />
+      <RoomAudioRenderer />
+    </LiveKitRoom>
   )
 }

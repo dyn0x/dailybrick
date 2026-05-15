@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Mic, MicOff, Video, VideoOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -15,29 +15,48 @@ export function PreJoinScreen({ userName, onJoin, isLoading = false }: PreJoinSc
   const [videoEnabled, setVideoEnabled] = useState(true)
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null)
   const [loadingDevices, setLoadingDevices] = useState(true)
+  const videoStreamRef = useRef<MediaStream | null>(null)
+
+  const stopVideoStream = () => {
+    const stream = videoStreamRef.current
+    if (!stream) return
+
+    stream.getTracks().forEach((track) => track.stop())
+    videoStreamRef.current = null
+    setVideoStream(null)
+  }
 
   // Initialize video preview
   useEffect(() => {
+    let isMounted = true
+
     const initVideo = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
           audio: false,
         })
+        if (!isMounted) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+
+        videoStreamRef.current = stream
         setVideoStream(stream)
       } catch (err) {
         console.warn("Could not access camera for preview:", err)
       } finally {
-        setLoadingDevices(false)
+        if (isMounted) {
+          setLoadingDevices(false)
+        }
       }
     }
 
     void initVideo()
 
     return () => {
-      if (videoStream) {
-        videoStream.getTracks().forEach((track) => track.stop())
-      }
+      isMounted = false
+      stopVideoStream()
     }
   }, [])
 
@@ -53,9 +72,7 @@ export function PreJoinScreen({ userName, onJoin, isLoading = false }: PreJoinSc
   }, [videoEnabled, videoStream])
 
   const handleJoin = () => {
-    if (videoStream) {
-      videoStream.getTracks().forEach((track) => track.stop())
-    }
+    stopVideoStream()
     onJoin({ audio: audioEnabled, video: videoEnabled })
   }
 
@@ -63,7 +80,7 @@ export function PreJoinScreen({ userName, onJoin, isLoading = false }: PreJoinSc
     <div className="w-full h-[calc(100vh-64px)] md:h-[calc(100vh-64px)] flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Video Preview */}
-        <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 border border-border/50 overflow-hidden flex items-center justify-center">
+        <div className="relative w-full aspect-video rounded-2xl bg-card border border-border/50 overflow-hidden flex items-center justify-center">
           {videoEnabled && videoStream ? (
             <video
               autoPlay
@@ -77,15 +94,16 @@ export function PreJoinScreen({ userName, onJoin, isLoading = false }: PreJoinSc
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-slate-700 to-slate-900 flex-col gap-4">
-              <div className="w-20 h-20 rounded-full bg-primary/20 border-2 border-primary/40 flex items-center justify-center">
-                <span className="text-3xl font-bold text-primary">
-                  {userName.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <p className="text-sm text-slate-300">{userName}</p>
+            <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-primary/10 to-primary/5 flex-col gap-2">
+              <VideoOff className="w-12 h-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Camera is off</p>
             </div>
           )}
+
+          {/* User name overlay */}
+          <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-sm">
+            <p className="text-sm font-medium text-white">{userName}</p>
+          </div>
         </div>
 
         {/* Controls */}
